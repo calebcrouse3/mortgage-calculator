@@ -1,6 +1,7 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objs as go
+from PIL import Image
 
 
 # TODO how does compounding work for home value growth, rental price increase, stock market value growth.
@@ -11,8 +12,52 @@ import plotly.graph_objs as go
 # assumption - you start with your downpayment and make no other money. Have no salary
 
 # add part for additional payments to principle early on. Which would also be added to stock market
+# what taxes and fees need to be added to the selling of a home to mirror the taxes applied to stock market profits
+
+# can rent out you house, poket the rent based on current price, and buy another house???
 
 st.set_page_config(layout="wide")
+st.title("Mortgage Simulator")
+
+st.markdown("""
+### Introduction to Using the Mortgage Simulator
+
+Welcome to the Mortgage Simulator! This interactive tool is designed to help you navigate the financial landscape of home ownership. Whether you're a first-time homebuyer, a current homeowner considering refinancing, or simply exploring the cost-benefit analysis of owning versus renting, this simulator offers valuable insights into the complexities of mortgages and real estate investments.
+
+To get started, you'll enter various parameters that affect the cost of buying and owning a home. These include:
+
+1. **Home Price ($)**: The purchase price of the home you're considering.
+2. **Down Payment ($)**: The upfront cash payment towards the home purchase.
+3. **Interest Rate (%)**: The annual interest rate of your mortgage.
+4. **Closing Costs (%)**: Additional costs incurred during the mortgage process, typically a percentage of the home price.
+5. **PMI Rate (%)**: If your down payment is less than 20% of the home price, Private Mortgage Insurance (PMI) applies.
+6. **State Property Tax**: Select your state to apply its specific property tax rate.
+7. **Homeowners Insurance Rate (%)**: Annual insurance rate based on the home's value.
+
+In addition to these home-buying specifics, you can also input data related to renting and investing in the stock market. This allows you to compare the long-term financial outcomes of owning a home versus renting and investing the surplus money.
+
+1. **Yearly Home Value Growth (%)**: The expected annual appreciation rate of your home's value.
+2. **Current Monthly Rent ($)**: If renting, your current monthly rent payment.
+3. **Yearly Rent Increase (%)**: The expected annual increase in your rent.
+4. **Stock Return Rate (%)**: Annual rate of return if you were to invest in the stock market.
+5. **Stock Tax Rate (%)**: The tax rate applied to stock market profits.
+
+As you input your data, the simulator dynamically calculates and displays:
+
+- **Monthly Mortgage Breakdown**: See how your payment is split between principal, interest, PMI, property tax, and insurance.
+- **Cumulative Costs Over Time**: Track the total cost of owning a home versus renting over the years.
+- **Net Cash in Pocket**: This graph compares the potential financial benefits of home ownership against renting and investing in the stock market.
+
+By adjusting these inputs, you can explore various scenarios and understand how different factors like interest rates, home price appreciation, and stock market returns can impact your financial future. This tool is a great way to experiment with different strategies and make more informed decisions about one of life's most significant investments – your home.
+""")
+
+
+
+# Load the photo
+photo = np.array(Image.open("src/bad_house.jpg"))
+
+# Display the photo
+st.image(photo, caption="Recently Listed")
 
 
 def total_value(initial_value, growth_rate, time):
@@ -91,11 +136,6 @@ def calculate_mortgage_and_costs(loan_amount, principal, interest_rate, init_hom
     return round(principal_payment), round(interest_payment), round(pmi), round(property_tax), round(insurance)  # Rounded to whole dollars
 
 
-# Function to format currency
-def format_currency(value):
-    return "${:,.0f}".format(value)  # Formats the number with a dollar sign and commas
-
-
 state_property_tax_rates = {
     "Alabama": 0.42,
     "Alaska": 1.19,
@@ -111,6 +151,8 @@ state_property_tax_rates = {
     "Massachusetts": 1.21,
 }
 
+state_property_tax_strings = [f"{state} ({rate}%)" for state, rate in state_property_tax_rates.items()]
+
 with st.sidebar:
     st.title("Mortgage")
     init_home_value = st.number_input("Home Price ($)", min_value=0, max_value=1000000, value=300000, step=1000)
@@ -118,26 +160,22 @@ with st.sidebar:
     interest_rate = st.number_input("Interest Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1)
     closing_costs_rate = st.number_input("Closing Costs (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1)
     pmi_rate = st.number_input("PMI Rate (%)", min_value=0.0, max_value=5.0, value=0.5, step=0.1)
-    st.title("Home")
-    yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1)
-    property_tax_rate = st.number_input("Property Tax Rate (%)", min_value=0.0, max_value=5.0, value=1.0, step=0.1)
+    st.title("Other Home Costs")
+    state_selection = st.selectbox("State Property Tax", state_property_tax_strings)
     insurance_rate = st.number_input("Homeowners Insurance Rate (%)", min_value=0.0, max_value=3.0, value=0.35, step=0.1)
+    st.title("Home Value Growth")
+    yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1)
     st.title("Rent")
     init_rent = st.number_input("Current Monthly Rent ($)", min_value=0, max_value=10000, value=1300, step=10)
     yearly_rent_increase = st.number_input("Yearly Rent Increase (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1)
     st.title("Stock")
     stock_market_growth_rate = st.number_input("Stock Return Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1)
     stock_tax_rate = st.number_input("Stock Tax Rate (%)", min_value=0.0, max_value=100.0, value=15.0, step=0.1)
-    # a drop down select box for state property tax rates that looks up the state and returns the rate
-    # state = st.selectbox("State", list(state_property_tax_rates.keys()))
-
-# state_tax_rate = state_property_tax_rates[state]
-
-st.title("Mortgage Simulator")
 
 months = np.arange(0, 361, 1)
 
 # set once
+property_tax_rate = state_property_tax_rates[state_selection.split(" (")[0]]
 closing_costs = init_home_value * closing_costs_rate / 100
 effective_down_payment = max(down_payment - closing_costs, 0)
 loan_amount = init_home_value - effective_down_payment
@@ -247,52 +285,76 @@ for month in months:
     home_value = new_home_value
 
 
+# Function to format currency
+def format_currency(value):
+    return "${:,.0f}".format(value)  # Formats the number with a dollar sign and commas
+
+
+# chart helpers
+def fig_update(fig, title):
+    year_labels = [f'{year}' for year in range(1, (len(months) // 12) + 1)]
+
+    year_ticks = dict(
+        tickmode='array',
+        tickvals=[1 + 12 * i for i in range(len(year_labels))],
+        ticktext=year_labels
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Year",
+        yaxis_title="Dollars",
+        xaxis=year_ticks,
+        height=700
+    )
+
+    for trace in fig.data:
+        trace.hovertemplate = f"{trace.name}: " + "%{y:$,.0f}<extra></extra>"
+
+def fig_display(fig):
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+
 # Create monthly plot
+st.markdown("""
+#### Monthly Costs Breakdown
+This section displays a detailed breakdown of your monthly costs when owning a home. It includes the principal and interest payments, PMI (if applicable), property tax, and homeowners insurance. Understanding these costs is crucial in determining the monthly affordability of a home and how your payments are allocated over time.
+""")
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=months, y=monthpay_total, mode='lines', name='Total Home'))
 fig.add_trace(go.Scatter(x=months, y=monthpay_principal, mode='lines', name='Principal'))
 fig.add_trace(go.Scatter(x=months, y=monthpay_interest, mode='lines', name='Interest'))
 fig.add_trace(go.Scatter(x=months, y=monthpay_misc, mode='lines', name='Misc'))
 fig.add_trace(go.Scatter(x=months, y=monthpay_rent, mode='lines', name='Rent'))
-
-fig.update_layout(
-    title="Monthly Costs",
-    xaxis_title="Months",
-    yaxis_title="Dollars",
-    xaxis=dict(tickmode='linear', tick0=0, dtick=60),
-    height=700,
-)
-st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+fig_update(fig, "")#"Monthly Costs")
+fig_display(fig)
 
 
 # Create cumulative plot
+st.markdown("""
+#### Cumulative Costs Over Time
+Here, you can see the cumulative costs of owning a home versus renting over time. This visualization helps you to understand the long-term financial commitment of a mortgage and compare it with the cumulative cost of renting. It's a vital tool for assessing the total financial impact of your housing decisions over the years.
+""")
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=months, y=cum_total, mode='lines', name='Total Home'))
 fig.add_trace(go.Scatter(x=months, y=cum_principal, mode='lines', name='Principal'))
 fig.add_trace(go.Scatter(x=months, y=cum_interest, mode='lines', name='Interest'))
 fig.add_trace(go.Scatter(x=months, y=cum_misc, mode='lines', name='Misc'))
 fig.add_trace(go.Scatter(x=months, y=cum_rent, mode='lines', name='Rent'))
-
-fig.update_layout(
-    title="Cumulative Costs",
-    xaxis_title="Months",
-    yaxis_title="Dollars",
-    xaxis=dict(tickmode='linear', tick0=0, dtick=60),
-    height=700,
-)
-st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+fig_update(fig, "") #"Cumulative Costs")
+fig_display(fig)
 
 
 # Create profit plot
+st.markdown("""
+#### Net Cash In Pocket Comparison
+This graph compares the potential financial benefits of home ownership against renting and investing in the stock market. It provides a visual representation of the net cash in pocket over time, considering factors like home value growth, rent increases, and stock market returns. In this simulation, any surplus money from renting is invested in the stock market.
+""")
+
 fig = go.Figure()
 fig.add_trace(go.Scatter(x=months, y=cumdelt_home_ownership, mode='lines', name='Home Ownership'))
 fig.add_trace(go.Scatter(x=months, y=cumdelt_renting, mode='lines', name='Rent + Stock Portfolio'))
-
-fig.update_layout(
-    title="Net Cash In Pocket",
-    xaxis_title="Months",
-    yaxis_title="Dollars",
-    xaxis=dict(tickmode='linear', tick0=0, dtick=60),
-    height=700,
-)
-st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+fig_update(fig, "") #"Net Cash In Pocket")
+fig_display(fig)
