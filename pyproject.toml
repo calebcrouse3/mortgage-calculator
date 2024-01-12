@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "mortgage-calculator"
+version = "0.1.0"
+description = ""
+authors = ["Caleb Crouse"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+streamlit = "^1.30.0"
+plotly = "^5.18.0"
+numpy = "^1.26.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

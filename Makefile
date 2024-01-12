@@ -1,5 +1,5 @@
 run:
-	@streamlit run mortgage-calculator.py
+	@streamlit run src/mortgage_calculator.py
 
 run2:
-	@streamlit run mortgage-calc-2.py
+	@streamlit run monhtly_payments.py
