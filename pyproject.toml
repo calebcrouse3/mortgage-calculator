@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "mortgage-calculator"
 version = "0.1.0"
-description = ""
+description = "A mortgage simulator"
 authors = ["Caleb Crouse"]
 readme = "README.md"
 
