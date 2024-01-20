@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "mortgage-calculator"
+name = "mortgage_calculator"
 version = "0.1.0"
 description = "A mortgage simulator"
 authors = ["Caleb Crouse"]
@@ -11,6 +11,8 @@ streamlit = "^1.30.0"
 plotly = "^5.18.0"
 numpy = "^1.26.3"
 
+[tool.poetry.group.dev.dependencies]
+aws-cdk-lib = "^2.121.1"
 
 [build-system]
 requires = ["poetry-core"]

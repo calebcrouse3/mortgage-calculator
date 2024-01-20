@@ -2,6 +2,9 @@ import streamlit as st
 import numpy as np
 import plotly.graph_objs as go
 from PIL import Image
+import pandas as pd
+
+SHOW_MARKDOWN = False
 
 
 # TODO how does compounding work for home value growth, rental price increase, stock market value growth.
@@ -17,48 +20,60 @@ from PIL import Image
 # can rent out you house, poket the rent based on current price, and buy another house???
 
 st.set_page_config(layout="wide")
+
+
+
+
 st.title("Mortgage Simulator")
 
-st.markdown("""
-### Introduction to Using the Mortgage Simulator
+if SHOW_MARKDOWN:
+    st.markdown("""
+    ### Introduction to Using the Mortgage Simulator
 
-Welcome to the Mortgage Simulator! This interactive tool is designed to help you navigate the financial landscape of home ownership. Whether you're a first-time homebuyer, a current homeowner considering refinancing, or simply exploring the cost-benefit analysis of owning versus renting, this simulator offers valuable insights into the complexities of mortgages and real estate investments.
+    Welcome to the Mortgage Simulator! This interactive tool is designed to help you navigate the financial landscape of home ownership. Whether you're a first-time homebuyer, a current homeowner considering refinancing, or simply exploring the cost-benefit analysis of owning versus renting, this simulator offers valuable insights into the complexities of mortgages and real estate investments.
 
-To get started, you'll enter various parameters that affect the cost of buying and owning a home. These include:
+    To get started, you'll enter various parameters that affect the cost of buying and owning a home. These include:
 
-1. **Home Price ($)**: The purchase price of the home you're considering.
-2. **Down Payment ($)**: The upfront cash payment towards the home purchase.
-3. **Interest Rate (%)**: The annual interest rate of your mortgage.
-4. **Closing Costs (%)**: Additional costs incurred during the mortgage process, typically a percentage of the home price.
-5. **PMI Rate (%)**: If your down payment is less than 20% of the home price, Private Mortgage Insurance (PMI) applies.
-6. **State Property Tax**: Select your state to apply its specific property tax rate.
-7. **Homeowners Insurance Rate (%)**: Annual insurance rate based on the home's value.
+    1. **Home Price ($)**: The purchase price of the home you're considering.
+    2. **Down Payment ($)**: The upfront cash payment towards the home purchase.
+    3. **Interest Rate (%)**: The annual interest rate of your mortgage.
+    4. **Closing Costs (%)**: Additional costs incurred during the mortgage process, typically a percentage of the home price.
+    5. **PMI Rate (%)**: If your down payment is less than 20% of the home price, Private Mortgage Insurance (PMI) applies.
+    6. **State Property Tax**: Select your state to apply its specific property tax rate.
+    7. **Homeowners Insurance Rate (%)**: Annual insurance rate based on the home's value.
 
-In addition to these home-buying specifics, you can also input data related to renting and investing in the stock market. This allows you to compare the long-term financial outcomes of owning a home versus renting and investing the surplus money.
+    In addition to these home-buying specifics, you can also input data related to renting and investing in the stock market. This allows you to compare the long-term financial outcomes of owning a home versus renting and investing the surplus money.
 
-1. **Yearly Home Value Growth (%)**: The expected annual appreciation rate of your home's value.
-2. **Current Monthly Rent ($)**: If renting, your current monthly rent payment.
-3. **Yearly Rent Increase (%)**: The expected annual increase in your rent.
-4. **Stock Return Rate (%)**: Annual rate of return if you were to invest in the stock market.
-5. **Stock Tax Rate (%)**: The tax rate applied to stock market profits.
+    1. **Yearly Home Value Growth (%)**: The expected annual appreciation rate of your home's value.
+    2. **Current Monthly Rent ($)**: If renting, your current monthly rent payment.
+    3. **Yearly Rent Increase (%)**: The expected annual increase in your rent.
+    4. **Stock Return Rate (%)**: Annual rate of return if you were to invest in the stock market.
+    5. **Stock Tax Rate (%)**: The tax rate applied to stock market profits.
 
-As you input your data, the simulator dynamically calculates and displays:
+    As you input your data, the simulator dynamically calculates and displays:
 
-- **Monthly Mortgage Breakdown**: See how your payment is split between principal, interest, PMI, property tax, and insurance.
-- **Cumulative Costs Over Time**: Track the total cost of owning a home versus renting over the years.
-- **Net Cash in Pocket**: This graph compares the potential financial benefits of home ownership against renting and investing in the stock market.
+    - **Monthly Mortgage Breakdown**: See how your payment is split between principal, interest, PMI, property tax, and insurance.
+    - **Cumulative Costs Over Time**: Track the total cost of owning a home versus renting over the years.
+    - **Net Cash in Pocket**: This graph compares the potential financial benefits of home ownership against renting and investing in the stock market.
 
-By adjusting these inputs, you can explore various scenarios and understand how different factors like interest rates, home price appreciation, and stock market returns can impact your financial future. This tool is a great way to experiment with different strategies and make more informed decisions about one of life's most significant investments – your home.
-""")
+    By adjusting these inputs, you can explore various scenarios and understand how different factors like interest rates, home price appreciation, and stock market returns can impact your financial future. This tool is a great way to experiment with different strategies and make more informed decisions about one of life's most significant investments – your home.
+    """)
+
+    # Load the photo
+    photo = np.array(Image.open("mortgage_calculator/bad_house.jpg"))
+
+    # Display the photo
+    st.image(photo, caption="Recently Listed")
 
 
-
-# Load the photo
-photo = np.array(Image.open("src/bad_house.jpg"))
-
-# Display the photo
-st.image(photo, caption="Recently Listed")
-
+def calculate_pmi(home_value, principal, pmi_rate, init_home_value):
+    # PMI gets cancelled when equity >= 20% of the home value, or loan balance <= 80% of the init home value
+    equity = home_value - principal
+    if equity < 0.2 * home_value or principal > 0.8 * init_home_value:
+        return (principal * pmi_rate / 100) / 12
+    else:
+        return 0
+    
 
 def total_value(initial_value, growth_rate, time):
     """
@@ -91,7 +106,7 @@ def calculate_portfolio_value(initial_investment, yearly_return, months, monthly
     return total_value
 
 
-def calculate_mortgage_and_costs(loan_amount, principal, interest_rate, init_home_value, home_value, pmi_rate, property_tax_rate, insurance_rate, years=30):
+def calculate_mortgage_and_costs(loan_amount, principal, interest_rate, home_value, property_tax_rate, insurance_rate, years=30):
     """
     Desribe Parameters:
     loan_amount: The amount of money borrowed from the bank
@@ -114,15 +129,6 @@ def calculate_mortgage_and_costs(loan_amount, principal, interest_rate, init_hom
     n_payments = years * 12
     monthly_payment = loan_amount * (monthly_rate * (1 + monthly_rate)**n_payments) / ((1 + monthly_rate)**n_payments - 1)
 
-    # TODO does PMI get calculated based off on the price of the home when you bought it or the current price of the home
-    # Might need to include initial home price vs current home price as parameters
-    # calculate PMI first since the principal depends on it
-    equity = home_value - principal
-    pmi = 0
-    # Calculate PMI if the effective down payment is less than 20% of the home price
-    if equity < 0.2 * init_home_value:
-        pmi = (principal * pmi_rate / 100) / 12
-
     # calculate principal interest rate break down
     interest_payment = principal * monthly_rate
     principal_payment = monthly_payment - interest_payment
@@ -133,7 +139,8 @@ def calculate_mortgage_and_costs(loan_amount, principal, interest_rate, init_hom
     # Calculate and add homeowners insurance
     insurance = (home_value * insurance_rate / 100) / 12
 
-    return round(principal_payment), round(interest_payment), round(pmi), round(property_tax), round(insurance)  # Rounded to whole dollars
+    # TODO dont round these values until the end
+    return round(principal_payment), round(interest_payment), round(property_tax), round(insurance)  # Rounded to whole dollars
 
 
 state_property_tax_rates = {
@@ -183,6 +190,9 @@ loan_amount = init_home_value - effective_down_payment
 # init_rent
 init_stock_value = down_payment - init_rent
 
+# update each year
+yearly_pmi = calculate_pmi(init_home_value, loan_amount, pmi_rate, init_home_value)
+
 # udpate each month
 principal = loan_amount
 home_value = init_home_value
@@ -215,9 +225,20 @@ stock_portfolio_value = []
 
 
 for month in months:
+
+    pmi = yearly_pmi
+    current_pmi = calculate_pmi(home_value, principal, pmi_rate, init_home_value)
+
+    if month % 12 == 0:
+        yearly_pmi = calculate_pmi(home_value, principal, pmi_rate, init_home_value)
+        pmi = yearly_pmi
+
+    if current_pmi == 0:
+        pmi = 0
+
     # need to adjust home price as months go on
-    principal_payment, interest_payment, pmi, property_tax, insurance = calculate_mortgage_and_costs(
-        loan_amount, principal, interest_rate, init_home_value, home_value, pmi_rate, property_tax_rate, insurance_rate
+    principal_payment, interest_payment, property_tax, insurance = calculate_mortgage_and_costs(
+        loan_amount, principal, interest_rate, home_value, property_tax_rate, insurance_rate
     )
 
     misc_payments = pmi + property_tax + insurance
@@ -313,6 +334,32 @@ def fig_update(fig, title):
 
 def fig_display(fig):
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+
+# add table that shows summary of the mortgage stuff
+summary_values = {
+    "home_price": init_home_value,
+    "effective_down_payment": effective_down_payment,
+    "closing_costs": closing_costs,
+    "total_loan_amount": loan_amount,
+    "total_interest_paid": sum(monthpay_interest),
+    "total_pmi_paid": sum(monthpay_pmi),
+    "number_of_pmi_payments": len([x for x in monthpay_pmi if x > 0]),
+    "total_misc_paid": sum(monthpay_misc),
+    #"total_rent_paid": sum(monthpay_rent),
+}
+
+# format keys and values as strings
+summary_values = {key.title().replace("_", " "): format_currency(value) for key, value in summary_values.items()}
+
+# Find the length of the longest key
+max_key_length = max(len(key) for key in summary_values.keys())
+max_value_length = max(len(value) for value in summary_values.values())
+
+# Pad each key to have the same length
+padded_dict = {key.ljust(max_key_length): value.rjust(max_value_length) for key, value in summary_values.items()}
+
+st.write(padded_dict)
 
 
 # Create monthly plot

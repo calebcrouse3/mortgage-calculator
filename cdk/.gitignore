@@ -1,0 +1,9 @@
+*.swp
+package-lock.json
+__pycache__
+*.egg-info
+*.tar
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
