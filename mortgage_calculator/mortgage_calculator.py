@@ -1,13 +1,15 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objs as go
+import plotly.express as px
 import pandas as pd
+from math import *
 from utils import format_currency, fig_update, fig_display
 from utils_finance import *
 from st_text import get_intro, get_monthly_intro, get_cumulative_intro 
 
 SHOW_TEXT = False
-MONTHS = np.arange(0, 361, 1)
+MONTHS = np.arange(0, 360, 1)
 
 st.set_page_config(layout="wide")
 st.title("Mortgage Simulator")
@@ -73,6 +75,7 @@ for month in MONTHS:
     if pmi_required:
         month_data["pmi"] = pmi_cost
 
+    # TODO add total to after simulating all costs
     month_data["total"] = sum([month_data[key] for key in month_data.keys() if not key in ["index", "year", "month"]])
 
     # end of month, update values
@@ -96,8 +99,40 @@ for month in MONTHS:
 
     data.append(month_data)
 
+# monthly cost cols
+monthly_cost_cols = ["total", "interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance", "monthly_misc"]
+
+
 df = pd.DataFrame(data)
+df = df.set_index("index")
+df["monthly_misc"] = df["property_tax"] + df["insurance"] + df["hoa"] + df["maintenance"] + df["pmi"]
 st.write(df)
+
+
+# for each year in the data frame, get the sum and mean values for monthly costs
+yearly_df = df.groupby("year")[monthly_cost_cols].agg(["sum", "mean"])
+yearly_df.columns = [f"{colname}_{agg}" for colname, agg in yearly_df.columns]
+# add cumulative sum for total, interest, principal, misc
+st.write(yearly_df)
+cumulative_df = yearly_df[["total_sum", "interest_sum", "principal_sum", "monthly_misc_sum"]].cumsum()
+cumulative_df.columns = [f"cum_{colname}" for colname in cumulative_df.columns]
+st.write(cumulative_df)
+#yearly_df = pd.concat([yearly_df, cumulative_df], axis=1)
+#st.write(yearly_df)
+
+
+# Pie Chart of first month costs
+first_month_df = df.loc[0:0, ["interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance"]].T \
+    .reset_index().rename(columns={"index": "Name", 0: "Value"})
+first_month_df["formatted_value"] = first_month_df["Value"].apply(lambda x: format_currency(x))
+first_month_df["Name"] = first_month_df["Name"].apply(lambda x: x.replace("_", " ").title())
+first_month_df = first_month_df[first_month_df["Value"] > 0]
+first_month_df = first_month_df.sort_values(by=["Value"], ascending=False)
+fig = px.pie(first_month_df, values='Value', names='Name', hole=0.7)
+fig.update_layout(height=600, showlegend=False)
+fig.update_traces(textposition='outside', text=first_month_df["formatted_value"], textinfo='label+text')
+fig_display(fig)
+
 
 # TODO
 # smooth out lines on yearly updated stuff
@@ -107,16 +142,36 @@ if SHOW_TEXT:
     get_monthly_intro()
 
 fig = go.Figure()
-fig.add_trace(go.Scatter(x=MONTHS, y=df["total"], mode='lines', name='Total Home'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["principal"], mode='lines', name='Principal'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["interest"], mode='lines', name='Interest'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["pmi"], mode='lines', name='pmi'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["insurance"], mode='lines', name='Insurance'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["property_tax"], mode='lines', name='Property Tax'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["hoa"], mode='lines', name='Hoa'))
-fig.add_trace(go.Scatter(x=MONTHS, y=df["maintenance"], mode='lines', name='Maintenance'))
-fig_update(fig, "", MONTHS)
+fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["total_mean"], mode='lines', name='Total Home'))
+fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["principal_mean"], mode='lines', name='Principal'))
+fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["interest_mean"], mode='lines', name='Interest'))
+fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["monthly_misc_mean"], mode='lines', name='misc'))
+
+fig.update_layout(
+    xaxis_title="Year",
+    yaxis_title="Dollars",
+    height=700
+)
 fig_display(fig)
+
+
+if SHOW_TEXT:
+    get_cumulative_intro()
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=cumulative_df.index, y=cumulative_df["cum_total_sum"], mode='lines', name='Total Home'))
+fig.add_trace(go.Scatter(x=cumulative_df.index, y=cumulative_df["cum_principal_sum"], mode='lines', name='Principal'))
+fig.add_trace(go.Scatter(x=cumulative_df.index, y=cumulative_df["cum_interest_sum"], mode='lines', name='Interest'))
+fig.add_trace(go.Scatter(x=cumulative_df.index, y=cumulative_df["cum_monthly_misc_sum"], mode='lines', name='misc'))
+
+fig.update_layout(
+    xaxis_title="Year",
+    yaxis_title="Dollars",
+    height=700
+)
+fig_display(fig)
+
+
 
 
 hi = """
@@ -144,17 +199,4 @@ def calculate_summary():
     padded_dict = {key.ljust(max_key_length): value.rjust(max_value_length) for key, value in summary_values.items()}
 
     st.write(padded_dict)
-
-
-# Create cumulative plot
-if SHOW_TEXT:
-    get_cumulative_intro()
-
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=months, y=cum_total, mode='lines', name='Total Home'))
-fig.add_trace(go.Scatter(x=months, y=cum_principal, mode='lines', name='Principal'))
-fig.add_trace(go.Scatter(x=months, y=cum_interest, mode='lines', name='Interest'))
-fig.add_trace(go.Scatter(x=months, y=cum_misc, mode='lines', name='Misc'))
-fig_update(fig, "") #"Cumulative Costs")
-fig_display(fig)
 """
