@@ -20,6 +20,7 @@ Does inflation determine rental increase, insurance, other things? Can it all be
 
 ### Biz notes
 Look into Icanbuy for ad revenue
+Call this a no compromises mortgage calculator. We leave nothing out.
 
 ### TODO
 - Summary with numbers at the top

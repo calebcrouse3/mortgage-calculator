@@ -13,6 +13,7 @@ numpy = "^1.26.3"
 
 [tool.poetry.group.dev.dependencies]
 aws-cdk-lib = "^2.121.1"
+pytest = "^7.4.4"
 
 [build-system]
 requires = ["poetry-core"]

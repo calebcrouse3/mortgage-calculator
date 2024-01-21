@@ -1,6 +1,9 @@
 run:
 	@poetry run streamlit run mortgage_calculator/mortgage_calculator.py
 
+test:
+	@poetry run pytest
+
 build:
 	@docker build -t mortgage-calculator .
 
