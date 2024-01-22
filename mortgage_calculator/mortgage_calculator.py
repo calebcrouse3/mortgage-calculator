@@ -19,30 +19,69 @@ st.title("Mortgage Simulator")
 if SHOW_TEXT:
     get_intro()
 
+
+# load resource data files to populate drop downs
+
+@st.cache_data
+def load_data():
+    return pd.read_csv('./mortgage_calculator/data/city_housing_data.csv')
+
+housing_df = load_data()
+
+def get_associated_data(selected_options):
+    row = housing_df[housing_df["region"] == selected_options]
+    return (
+        row["median_sale_price"].values[0], 
+        row["median_ppsf"].values[0],
+        row["median_sale_price_cagr"].values[0],
+        row["median_ppsf_cagr"].values[0],
+        row["property_tax_rate"].values[0],
+    )
+
+@st.cache_data
+def get_city_options():
+    return housing_df["region"].unique()
+
+city_options = get_city_options()
+
 #Other than the string inputs, rates are always expressed as a decimal between 0 and 1
 with st.sidebar:
+    st.title("Your City")
+
+    # todo add zip code, metro area, etc
+    city = st.selectbox("Select City", city_options)
+
+    # get values from city
+    median_sale_price, median_ppsf, median_sale_price_cagr, median_ppsf_cagr, property_tax_rate = get_associated_data(city)
+
     st.title("Mortgage")
-    init_home_value = st.number_input("Home Price ($)", min_value=0, max_value=1000000, value=300000, step=1000)
+    init_home_value = st.number_input("Home Price ($)", min_value=0, max_value=10000000, value=int(median_sale_price), step=1000)
     down_payment = st.number_input("Down Payment ($)", min_value=0, value=50000, step=1000)
     interest_rate = st.number_input("Interest Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1) / 100
     closing_costs_rate = st.number_input("Closing Costs (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
     pmi_rate = st.number_input("PMI Rate (%)", min_value=0.0, max_value=5.0, value=0.5, step=0.1) / 100
+
     st.title("Other Home Costs")
-    property_tax_rate = st.number_input("Property Tax Rate (%)", min_value=0.0, max_value=3.0, value=1.0, step=0.1) / 100
+    property_tax_rate = st.number_input("Property Tax Rate (%)", min_value=0.0, max_value=3.0, value=property_tax_rate, step=0.1) / 100
     insurance_rate = st.number_input("Homeowners Insurance Rate (%)", min_value=0.0, max_value=3.0, value=0.35, step=0.1) / 100
     init_hoa_fees = st.number_input("HOA Fees ($)", min_value=0, max_value=10000, value=100, step=10)
     init_monthly_maintenance = st.number_input("Monthly Maintenance ($)", min_value=0, max_value=10000, value=50, step=10)
+
     st.title("Home Value Growth")
-    yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
+    yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=median_sale_price_cagr*100, step=0.1) / 100
+
     st.title("Home Selling Costs")
     realtor_rate = st.number_input("Percent of HV paid to realtor (%)", min_value=0.0, max_value=10.0, value=6.0, step=0.1) / 100
     sell_closing_costs_rate = st.number_input("Selling Closing Costs (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100
     additional_selling_costs = st.number_input("Additional Selling Costs ($)", min_value=0, max_value=10000, value=5000, step=100)
+
     st.title("Inflation Rate")
     inflation_rate = st.number_input("Inflation Rate (%)", min_value=0.01, max_value=10.0, value=3.0, step=0.1) / 100
+
     st.title("Rent")
     init_rent = st.number_input("Current Monthly Rent ($)", min_value=0, max_value=10000, value=1300, step=10)
     yearly_rent_increase = st.number_input("Yearly Rent Increase (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
+
     st.title("Stock")
     stock_market_growth_rate = st.number_input("Stock Return Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1) / 100
     stock_tax_rate = st.number_input("Stock Tax Rate (%)", min_value=0.0, max_value=100.0, value=15.0, step=0.1) / 100
@@ -235,10 +274,11 @@ add_cip(yearly_df)
 mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
 first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
 
+
 # display dataframes for debug
-st.write(monthly_df)
-st.write(yearly_df)
-st.write(first_year_df)
+#st.write(monthly_df)
+#st.write(yearly_df)
+#st.write(first_year_df)
 
 
 if SHOW_TEXT:
