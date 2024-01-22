@@ -18,6 +18,10 @@ Whats an even benchmark to compare rent price and home price. Price per square f
 Does inflation determine rental increase, insurance, other things? Can it all be boiled down to one number?
 Difference between monthly and biweekly payments? What does that do
 
+Have the first page be tutorial narrative style top to bottom but you can click to a page with just the numbers
+
+I think median growth in ppsf might be better than median home sale price because it corrects for size of homes
+
 ### Biz notes
 Look into Icanbuy for ad revenue
 Call this a no compromises mortgage calculator. We leave nothing out.

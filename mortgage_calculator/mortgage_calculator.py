@@ -34,8 +34,19 @@ with st.sidebar:
     init_monthly_maintenance = st.number_input("Monthly Maintenance ($)", min_value=0, max_value=10000, value=50, step=10)
     st.title("Home Value Growth")
     yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
+    st.title("Home Selling Costs")
+    realtor_rate = st.number_input("Percent of HV paid to realtor (%)", min_value=0.0, max_value=10.0, value=6.0, step=0.1) / 100
+    sell_closing_costs_rate = st.number_input("Selling Closing Costs (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100
+    additional_selling_costs = st.number_input("Additional Selling Costs ($)", min_value=0, max_value=10000, value=5000, step=100)
     st.title("Inflation Rate")
     inflation_rate = st.number_input("Inflation Rate (%)", min_value=0.01, max_value=10.0, value=3.0, step=0.1) / 100
+    st.title("Rent")
+    init_rent = st.number_input("Current Monthly Rent ($)", min_value=0, max_value=10000, value=1300, step=10)
+    yearly_rent_increase = st.number_input("Yearly Rent Increase (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
+    st.title("Stock")
+    stock_market_growth_rate = st.number_input("Stock Return Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1) / 100
+    stock_tax_rate = st.number_input("Stock Tax Rate (%)", min_value=0.0, max_value=100.0, value=15.0, step=0.1) / 100
+
 
 # set once
 closing_costs = init_home_value * closing_costs_rate
@@ -44,11 +55,15 @@ loan_amount = init_home_value - effective_down_payment
 monthly_payment = get_monthly_payment_amount(loan_amount, interest_rate)
 
 # update yearly
+# home
 pmi_cost = get_monthly_pmi(init_home_value, loan_amount, pmi_rate, init_home_value)
 property_tax_cost = init_home_value * property_tax_rate / 12
 insurance_cost = init_home_value * insurance_rate / 12
 hoa_costs = init_hoa_fees
 maintenance_costs = init_monthly_maintenance
+# rent / stock
+rent = init_rent
+portfolio_value = down_payment
 
 # update monthly
 loan_balance = loan_amount
@@ -82,8 +97,16 @@ for month in MONTHS:
     else:
         month_data["pmi"] = 0
 
+    month_data["rent"] = rent
+
     # end of month, update values
-    
+
+    # update portfolio value
+    contribution = (monthly_payment + property_tax_cost + insurance_cost + hoa_costs + maintenance_costs + month_data["pmi"]) - rent
+    contribution = max(contribution, 0)
+    portfolio_value = add_growth(portfolio_value, stock_market_growth_rate, 1, contribution)
+    month_data["portfolio_value"] = portfolio_value
+
     # update loan balance
     loan_balance -= month_data["principal"]
     month_data["loan_balance"] = loan_balance
@@ -106,14 +129,12 @@ for month in MONTHS:
         insurance_cost = home_value * insurance_rate / 12
         hoa_costs = add_growth(hoa_costs, inflation_rate, 12)
         pmi_cost = true_pmi
+        rent = add_growth(rent, yearly_rent_increase, 12)
 
     data.append(month_data)
 
 
-# commonly used column sets
 COST_COLS = ["interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance"]
-MISC_COLS = list(set(COST_COLS) - set(["interest", "principal"]))
-COLS = COST_COLS + ["total", "misc"]
 
 
 def get_sim_monthly_df(data):
@@ -121,22 +142,66 @@ def get_sim_monthly_df(data):
 
     monthly_df = pd.DataFrame(data)
     monthly_df = monthly_df.set_index("index")
-    monthly_df["total"] = monthly_df[COST_COLS].sum(axis=1)
-    monthly_df["misc"] = monthly_df[MISC_COLS].sum(axis=1)
+
+    # add total and misc columns
+    monthly_df["total"] = monthly_df[
+        COST_COLS
+    ].sum(axis=1)
+    monthly_df["misc"] = monthly_df[
+        ["pmi", "insurance", "property_tax", "hoa", "maintenance"]
+    ].sum(axis=1)
     return monthly_df
 
 
 def get_sim_yearly_df(monthly_df):
     # sum and mean for each year
-    yearly_df = monthly_df.groupby("year")[COLS].agg(["sum", "mean"])
-    yearly_df.columns = [f"{colname}_{agg}" for colname, agg in yearly_df.columns]
+    yearly_df = monthly_df.groupby("year").agg(
+        # sum cols
+        pmi_sum=("pmi", "sum"),
+        insurance_sum=("insurance", "sum"),
+        property_tax_sum=("property_tax", "sum"),
+        hoa_sum=("hoa", "sum"),
+        maintenance_sum=("maintenance", "sum"),
+        interest_sum=("interest", "sum"),
+        principal_sum=("principal", "sum"),
+        misc_sum=("misc", "sum"),
+        total_sum=("total", "sum"),
+        rent_sum=("rent", "sum"),
+        # mean cols
+        pmi_mean=("pmi", "mean"),
+        insurance_mean=("insurance", "mean"),
+        property_tax_mean=("property_tax", "mean"),
+        hoa_mean=("hoa", "mean"),
+        maintenance_mean=("maintenance", "mean"),
+        interest_mean=("interest", "mean"),
+        principal_mean=("principal", "mean"),
+        misc_mean=("misc", "mean"),
+        total_mean=("total", "mean"),
+        # home value max
+        home_value_max=("home_value", "max"),
+        loan_balance_max=("loan_balance", "max"),
+        portfolio_max=("portfolio_value", "max"),
+    )
 
     # cumulative cols for principal, interest, total, misc
-    cumulative_df = yearly_df[["total_sum", "interest_sum", "principal_sum", "misc_sum"]].cumsum()
+    cumulative_df = yearly_df[["total_sum", "interest_sum", "principal_sum", "misc_sum", "rent_sum"]].cumsum()
     cumulative_df.columns = [f"cum_{colname}" for colname in cumulative_df.columns]
 
     yearly_df = pd.concat([yearly_df, cumulative_df], axis=1)
     return yearly_df
+
+
+def add_cip(df):
+    """
+    Your money: equity - (closing costs, interest, misc, realtor fees)
+    """
+
+    df["equity"] = df["home_value_max"] - df["loan_balance_max"]
+    df["cip_homeownership"] = \
+        (df["equity"] * (1-realtor_rate-sell_closing_costs_rate)) \
+            - closing_costs - df["cum_interest_sum"] - df["cum_misc_sum"] - additional_selling_costs
+    
+    df["cip_renting"] = df["portfolio_max"] * (1-stock_tax_rate) - df["cum_rent_sum"]
 
 
 def format_df_row_values(df, row_num, cols):
@@ -166,6 +231,7 @@ def disaply_pie_chart(df):
 # get dataframes
 monthly_df = get_sim_monthly_df(data)
 yearly_df = get_sim_yearly_df(monthly_df)
+add_cip(yearly_df)
 mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
 first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
 
@@ -273,19 +339,19 @@ calculate_summary()
 
 # Monthly
     
-display_line_chart(
-    yearly_df, 
-    cols=["total_mean", "principal_mean", "interest_mean", "misc_mean"], 
-    names=["Total", "Principal", "Interest", "Misc"],
-    title="Monthly Costs"
-)
+# display_line_chart(
+#     yearly_df, 
+#     cols=["total_mean", "principal_mean", "interest_mean", "misc_mean"], 
+#     names=["Total", "Principal", "Interest", "Misc"],
+#     title="Monthly Costs"
+# )
 
-display_stacked_bar_chart(
-    yearly_df, 
-    cols=["interest_mean", "principal_mean", "misc_mean"], 
-    names=["Interest", "Principal", "Misc"],
-    title="Monthly Costs"
-)
+# display_stacked_bar_chart(
+#     yearly_df, 
+#     cols=["interest_mean", "principal_mean", "misc_mean"], 
+#     names=["Interest", "Principal", "Misc"],
+#     title="Monthly Costs"
+# )
 
 display_stacked_bar_chart(
     yearly_df, 
@@ -301,16 +367,28 @@ if SHOW_TEXT:
     get_cumulative_intro()
 
 
+# display_line_chart(
+#     yearly_df, 
+#     cols=["cum_total_sum", "cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
+#     names=["Total", "Principal", "Interest", "Misc"],
+#     title="Cumulative Costs"
+# )
+
+# display_stacked_bar_chart(
+#     yearly_df, 
+#     cols=["cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
+#     names=["Principal", "Interest", "Misc"],
+#     title="Cumulative Costs"
+# )
+
+
+# cash in pocket
+# equity - money lost (closing costs, interest, misc, realtor fees, taxes?)
+# vs
+# portfolio value - rent and taxes paid
 display_line_chart(
     yearly_df, 
-    cols=["cum_total_sum", "cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
-    names=["Total", "Principal", "Interest", "Misc"],
-    title="Cumulative Costs"
-)
-
-display_stacked_bar_chart(
-    yearly_df, 
-    cols=["cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
-    names=["Principal", "Interest", "Misc"],
-    title="Cumulative Costs"
+    cols=["cip_homeownership", "cip_renting"], 
+    names=["cip_homeownership", "cip_renting"],
+    title="Equity - Money Lost"
 )
