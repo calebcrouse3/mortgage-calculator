@@ -5,21 +5,25 @@ def format_currency(value):
     return "${:,.0f}".format(value)  # Formats the number with a dollar sign and commas
 
 
-# chart helpers
-def fig_update(fig, title, months):
-    year_labels = [f'{year}' for year in range(1, (len(months) // 12) + 1)]
-    year_ticks = dict(
+def get_xaxis(current_year, num_years=30):
+    tick_positions = list(range(0, num_years, 5))
+    tick_labels = [i + current_year for i in tick_positions]
+    return dict(title='Year',
         tickmode='array',
-        tickvals=[1 + 12 * i for i in range(len(year_labels))],
-        ticktext=year_labels
+        tickvals=tick_positions,
+        ticktext=tick_labels
     )
-    fig.update_layout(
-        title=title,
-        xaxis_title="Year",
-        yaxis_title="Dollars",
-        xaxis=year_ticks,
-        height=700
+
+
+def get_yaxis():
+    return dict(
+        title='Dollars',
+        tickformat='$,.0f'
     )
+
+
+# chart helpers
+def fig_update(fig):
     for trace in fig.data:
         trace.hovertemplate = f"{trace.name}: " + "%{y:$,.0f}<extra></extra>"
 

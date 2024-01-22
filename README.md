@@ -16,7 +16,7 @@ Amortization is paying off debt over time in equal installments
 What are the costs of refinancing?
 Whats an even benchmark to compare rent price and home price. Price per square foot?
 Does inflation determine rental increase, insurance, other things? Can it all be boiled down to one number?
-
+Difference between monthly and biweekly payments? What does that do
 
 ### Biz notes
 Look into Icanbuy for ad revenue

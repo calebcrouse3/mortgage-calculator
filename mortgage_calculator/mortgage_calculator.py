@@ -4,13 +4,14 @@ import plotly.graph_objs as go
 import plotly.express as px
 import pandas as pd
 from math import *
-from utils import format_currency, fig_update, fig_display
+from utils import *
 from utils_finance import *
-from st_text import get_intro, get_monthly_intro, get_cumulative_intro 
+from st_text import *
 
 
 SHOW_TEXT = False
 MONTHS = np.arange(360)
+CURRENT_YEAR = 2024
 
 st.set_page_config(layout="wide")
 st.title("Mortgage Simulator")
@@ -33,7 +34,7 @@ with st.sidebar:
     init_monthly_maintenance = st.number_input("Monthly Maintenance ($)", min_value=0, max_value=10000, value=50, step=10)
     st.title("Home Value Growth")
     yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
-    st.title("Home Value Growth")
+    st.title("Inflation Rate")
     inflation_rate = st.number_input("Inflation Rate (%)", min_value=0.01, max_value=10.0, value=3.0, step=0.1) / 100
 
 # set once
@@ -78,9 +79,11 @@ for month in MONTHS:
     month_data["maintenance"] = maintenance_costs
     if pmi_required:
         month_data["pmi"] = pmi_cost
+    else:
+        month_data["pmi"] = 0
 
     # end of month, update values
-
+    
     # update loan balance
     loan_balance -= month_data["principal"]
     month_data["loan_balance"] = loan_balance
@@ -92,12 +95,17 @@ for month in MONTHS:
     # update monthly maintenance costs
     maintenance_costs = add_growth(maintenance_costs, inflation_rate, months=1)
 
+    # update if pmi is required but dont update value unless its end of year
+    true_pmi = get_monthly_pmi(home_value, loan_balance, pmi_rate, init_home_value)
+    pmi_required = true_pmi > 0
+
+
     # update yearly values at end of last month in each year
     if (month + 1) % 12 == 0 and month > 0:
         property_tax_cost = home_value * property_tax_rate / 12
         insurance_cost = home_value * insurance_rate / 12
-        pmi_cost = get_monthly_pmi(home_value, loan_balance, pmi_rate, init_home_value)
         hoa_costs = add_growth(hoa_costs, inflation_rate, 12)
+        pmi_cost = true_pmi
 
     data.append(month_data)
 
@@ -166,45 +174,73 @@ st.write(monthly_df)
 st.write(yearly_df)
 st.write(first_year_df)
 
-# monthly payment pie chart
-disaply_pie_chart(first_year_df)
-
 
 if SHOW_TEXT:
     get_monthly_intro()
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["total_mean"], mode='lines', name='Total Home'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["principal_mean"], mode='lines', name='Principal'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["interest_mean"], mode='lines', name='Interest'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["misc_mean"], mode='lines', name='Misc'))
 
-fig.update_layout(
-    xaxis_title="Year",
-    yaxis_title="Dollars",
-    height=700
-)
-fig_display(fig)
+# monthly payment pie chart
+disaply_pie_chart(first_year_df)
 
 
-if SHOW_TEXT:
-    get_cumulative_intro()
+def display_stacked_bar_chart(df, cols, names, title):
+    """df must have columns: name, value, formatted_value"""
+    fig = go.Figure()
+    
+    for col, name in zip(cols, names):
+        fig.add_trace(go.Bar(x=df.index, y=df[col], name=name))
 
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["cum_total_sum"], mode='lines', name='Total Home'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["cum_principal_sum"], mode='lines', name='Principal'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["cum_interest_sum"], mode='lines', name='Interest'))
-fig.add_trace(go.Scatter(x=yearly_df.index, y=yearly_df["cum_misc_sum"], mode='lines', name='misc'))
-
-fig.update_layout(
-    xaxis_title="Year",
-    yaxis_title="Dollars",
-    height=700
-)
-fig_display(fig)
+    fig.update_layout(title=title,
+                      xaxis=get_xaxis(CURRENT_YEAR),
+                      yaxis=get_yaxis(),
+                      barmode='stack',
+                      height=700)
+    fig_display(fig)
 
 
-hi = """
+def display_line_chart(df, cols, names, title):
+    """df must have columns: name, value, formatted_value"""
+    fig = go.Figure()
+    
+    for col, name in zip(cols, names):
+        fig.add_trace(go.Scatter(x=df.index, y=df[col], mode='lines', name=name))
+
+    fig.update_layout(title=title,
+                      xaxis=get_xaxis(CURRENT_YEAR),
+                      yaxis=get_yaxis(),
+                      barmode='stack',
+                      height=700)
+    fig_display(fig)
+
+
+
+def display_stacked_line_chart(df, cols, names, title):
+    # Somthing is wrong with this function
+
+    """df must have columns: name, value, formatted_value"""
+    assert len(cols) == len(names)
+
+    fig = go.Figure()
+    
+    fill_type = "tozeroy"
+    for i in range(len(cols)):
+        st.write(f"i: {i}")
+        vals = df[cols[i]]
+        name = names[i]
+
+        for j in range(0, i):
+            st.write(f"j: {j}")
+            vals += df[cols[j]]
+            
+        fig.add_trace(go.Scatter(x=df.index, y=vals, mode='lines', name=name, fill=fill_type))
+        fill_type = "tonexty"
+
+    fig.update_layout(title=title,
+                      xaxis=get_xaxis(CURRENT_YEAR),
+                      yaxis=get_yaxis(),
+                      height=700)
+    fig_display(fig)
+
 def calculate_summary():
     # add table that shows summary of the mortgage stuff
     summary_values = {
@@ -212,10 +248,12 @@ def calculate_summary():
         "effective_down_payment": effective_down_payment,
         "closing_costs": closing_costs,
         "total_loan_amount": loan_amount,
-        "total_interest_paid": sum(monthpay_interest),
-        "total_pmi_paid": sum(monthpay_pmi),
-        "number_of_pmi_payments": len([x for x in monthpay_pmi if x > 0]),
-        "total_misc_paid": sum(monthpay_misc),
+        # excludes down payment and closing costs
+        "total_home_paid": sum(yearly_df["total_sum"]),
+        "total_interest_paid": sum(yearly_df["interest_sum"]),
+        "total_tax_paid": sum(yearly_df["property_tax_sum"]),
+        "total_pmi_paid": sum(yearly_df["pmi_sum"]),
+        "number_of_pmi_payments": len([x for x in monthly_df["pmi"] if x > 0]),
     }
 
     # format keys and values as strings
@@ -229,4 +267,50 @@ def calculate_summary():
     padded_dict = {key.ljust(max_key_length): value.rjust(max_value_length) for key, value in summary_values.items()}
 
     st.write(padded_dict)
-"""
+
+
+calculate_summary()
+
+# Monthly
+    
+display_line_chart(
+    yearly_df, 
+    cols=["total_mean", "principal_mean", "interest_mean", "misc_mean"], 
+    names=["Total", "Principal", "Interest", "Misc"],
+    title="Monthly Costs"
+)
+
+display_stacked_bar_chart(
+    yearly_df, 
+    cols=["interest_mean", "principal_mean", "misc_mean"], 
+    names=["Interest", "Principal", "Misc"],
+    title="Monthly Costs"
+)
+
+display_stacked_bar_chart(
+    yearly_df, 
+    cols=[f"{x}_mean" for x in COST_COLS], 
+    names=COST_COLS,
+    title="Monthly Costs"
+)
+
+
+# Cumulative
+
+if SHOW_TEXT:
+    get_cumulative_intro()
+
+
+display_line_chart(
+    yearly_df, 
+    cols=["cum_total_sum", "cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
+    names=["Total", "Principal", "Interest", "Misc"],
+    title="Cumulative Costs"
+)
+
+display_stacked_bar_chart(
+    yearly_df, 
+    cols=["cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
+    names=["Principal", "Interest", "Misc"],
+    title="Cumulative Costs"
+)
