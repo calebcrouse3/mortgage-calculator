@@ -15,20 +15,28 @@ MONTHS = np.arange(360)
 CURRENT_YEAR = 2024
 
 
-# load resource data files to populate drop downs
 @st.cache_data
 def load_housing_data():
     return pd.read_csv('./mortgage_calculator/data/city_housing_data.csv')
 
 
 @st.cache_data
-def get_city_options(housing_df):
+def get_region_options(housing_df):
     return housing_df["region"].unique()
+
+
+@dataclass
+class HousingDataLookup:
+    med_price: float
+    med_ppsf: float
+    med_price_cagr: float
+    med_ppsf_cagr: float
+    tax_rate: float
 
 
 def get_associated_data(selected_options, housing_df):
     row = housing_df[housing_df["region"] == selected_options]
-    return (
+    return HousingDataLookup(
         row["median_sale_price"].values[0], 
         row["median_ppsf"].values[0],
         row["median_sale_price_cagr"].values[0],
@@ -38,21 +46,50 @@ def get_associated_data(selected_options, housing_df):
 
 
 def rate_input(label, default, min_value=0.0, max_value=99.0, step=0.1):
-    return st.number_input(label=f"{label} (%)", min_value=min_value, max_value=max_value, value=default, step=step) / 100
+    percent = st.number_input(
+        label=f"{label} (%)", 
+        min_value=min_value, 
+        max_value=max_value, 
+        value=default, 
+        step=step
+    )
+    return percent / 100
 
 
 def dollar_input(label, default, min_value=0, max_value=1e8):
-    # function that will calculate the step input based on the default value where the step is
-    # 1eN where N is one less than the number of digits in the default value
+    """Function that will calculate the step input based on the default value.
+    The step is 1eN where N is one less than the number of digits in the default value.
+    """
+
     step=10
     if default > 100:
         step = int(10 ** (floor(log10(default)) - 1))
-    return st.number_input(f"{label} ($)", min_value=min_value, max_value=int(max_value), value=int(default), step=step)
+    return st.number_input(
+        f"{label} ($)", 
+        min_value=min_value, 
+        max_value=int(max_value), 
+        value=int(default), 
+        step=step
+    )
+
+
+def get_columns(n=6):
+    return st.columns(n)
+
+
+def populate_columns(values, dataclass):
+    output_vals = []
+    columns = get_columns()
+    for col, value_func in zip(columns[:len(values)], values):
+        with col:
+            val = value_func()
+            output_vals.append(val)
+    return dataclass(*output_vals)
 
 
 @dataclass
 class MortgageInputs:
-    city: str
+    region: str
     init_home_value: float
     down_payment: float
     interest_rate: float
@@ -85,80 +122,76 @@ class RentStockInputs:
     stock_tax_rate: float
 
 
-def get_mortgage_inputs(city_options, housing_df):
+def get_mortgage_inputs(region_options, housing_df):
     st.header("Mortgage", anchor="mortgage")
-    col1, col2, col3, col4, col5, col6 = st.columns([1,1,1,1,1,1])
-    with col1:
-        # todo add zip code, metro area, etc
-        city = st.selectbox("City", city_options)
-        median_sale_price, median_ppsf, median_sale_price_cagr, median_ppsf_cagr, property_tax_rate = get_associated_data(city, housing_df)
-    with col2:
-        init_home_value = dollar_input("Home Price", median_sale_price)
-    with col3:
-        down_payment = dollar_input("Down Payment", 50000)
-    with col4:
-        interest_rate = rate_input("Interest Rate", 7.0)
-    with col5:
-        yearly_home_value_growth = rate_input("Yearly Home Value Growth", median_sale_price_cagr*100)
-    with col6:
-        property_tax_rate = rate_input("Property Tax Rate", property_tax_rate)
 
-    return MortgageInputs(city, init_home_value, down_payment, interest_rate, yearly_home_value_growth, property_tax_rate)
+    # if no region selected, default to first region
+    if 'region' not in st.session_state:
+        st.session_state['region'] = region_options[0]
+
+    # get defaults from selected region
+    housing_data = get_associated_data(st.session_state['region'], housing_df)
+
+    # function to create region select box and update session state
+    def region_select():
+        region = st.selectbox("Region", region_options, key="region")
+        return region
+
+    return populate_columns(
+        [
+            lambda: region_select(),
+            lambda: dollar_input("Home Price", housing_data.med_price),
+            lambda: dollar_input("Down Payment", 50000),
+            lambda: rate_input("Interest Rate", 7.0),
+            lambda: rate_input("Yearly Home Value Growth", housing_data.med_price_cagr*100),
+            lambda: rate_input("Property Tax Rate", housing_data.tax_rate)
+        ],
+        MortgageInputs
+    )
 
 
+# TODO need to keep session state even when they uncheck the box
 def get_other_factors_inputs(show_other_factors):
     if show_other_factors:
-        col1, col2, col3, col4, col5, col6 = st.columns([1,1,1,1,1,1])
-        with col1:
-            closing_costs_rate = rate_input("Closing Costs", 3.0)
-        with col2:
-            pmi_rate = rate_input("PMI Rate", 0.5)
-        with col3:
-            insurance_rate = rate_input("Homeowners Insurance Rate", 0.35)
-        with col4:
-            init_hoa_fees = dollar_input("HOA Fees", 0)
-        with col5:
-            init_monthly_maintenance = dollar_input("Monthly Maintenance", 0)
-        with col6:
-            inflation_rate = rate_input("Inflation Rate", 3.0)
-
-        return OtherFactorsInputs(closing_costs_rate, pmi_rate, insurance_rate, init_hoa_fees, init_monthly_maintenance, inflation_rate)
+        return populate_columns(
+            [
+                lambda: rate_input("Closing Costs", 3.0),
+                lambda: rate_input("PMI Rate", 0.5),
+                lambda: rate_input("Homeowners Insurance Rate", 0.35),
+                lambda: dollar_input("HOA Fees", 0),
+                lambda: dollar_input("Monthly Maintenance", 0),
+                lambda: rate_input("Inflation Rate", 3.0)
+            ],
+            OtherFactorsInputs
+        )
     else:
-        closing_costs_rate = 3.0
-        pmi_rate = 0.5
-        insurance_rate = 0.35
-        init_hoa_fees = 0
-        init_monthly_maintenance = 0
-        inflation_rate = 3.0
-        return OtherFactorsInputs(closing_costs_rate, pmi_rate, insurance_rate, init_hoa_fees, init_monthly_maintenance, inflation_rate)
+        # have to convert rates for defaults to decimal. 3.0% -> 0.03
+        return OtherFactorsInputs(0.003, 0.005, 0.0035, 0, 0, 0.03)
 
 
 def get_home_selling_costs_inputs():
     st.header("Home Selling Costs")
-    col1, col2, col3, _, _, _ = st.columns([1,1,1,1,1,1])
-    with col1:
-        realtor_rate = rate_input("Realtor Fee", 6.0)
-    with col2:
-        sell_closing_costs_rate = rate_input("Selling Closing Costs", 1.0)
-    with col3:
-        additional_selling_costs = dollar_input("Additional Selling Costs", 5000)
-
-    return HomeSellingCostsInputs(realtor_rate, sell_closing_costs_rate, additional_selling_costs)
+    return populate_columns(
+        [
+            lambda: rate_input("Realtor Fee", 6.0),
+            lambda: rate_input("Selling Closing Costs", 1.0),
+            lambda: dollar_input("Additional Selling Costs", 5000)
+        ],
+        HomeSellingCostsInputs
+    )
 
 
 def get_rent_stock_inputs():
     st.header("Rent + Stock")
-    col1, col2, col3, col4, _, _ = st.columns([1,1,1,1,1,1])
-    with col1:
-        init_rent = dollar_input("Current Monthly Rent", 2000)
-    with col2:
-        yearly_rent_increase = rate_input("Yearly Rent Increase", 3.0)
-    with col3:
-        stock_market_growth_rate = rate_input("Stock Return Rate", 7.0)
-    with col4:
-        stock_tax_rate = rate_input("Stock Tax Rate", 15.0)
-
-    return RentStockInputs(init_rent, yearly_rent_increase, stock_market_growth_rate, stock_tax_rate)
+    return populate_columns(
+        [
+            lambda: dollar_input("Current Monthly Rent", 2000),
+            lambda: rate_input("Yearly Rent Increase", 3.0),
+            lambda: rate_input("Stock Return Rate", 7.0),
+            lambda: rate_input("Stock Tax Rate", 15.0)
+        ],
+        RentStockInputs
+    )
 
 
 def run_simluation(mort, other, sell, rent_stock):
@@ -413,8 +446,8 @@ if SHOW_TEXT:
 
 # get dataframes
 housing_df = load_housing_data()
-city_options = get_city_options(housing_df)
-mortgage_inputs = get_mortgage_inputs(city_options, housing_df)
+region_options = get_region_options(housing_df)
+mortgage_inputs = get_mortgage_inputs(region_options, housing_df)
 show_other_factors = st.checkbox("Show Other Costs")
 other_factors_inputs = get_other_factors_inputs(show_other_factors)
 sell_inputs = get_home_selling_costs_inputs()

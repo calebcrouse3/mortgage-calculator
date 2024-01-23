@@ -1,6 +1,9 @@
 run:
 	@poetry run streamlit run mortgage_calculator/mortgage_calculator.py
 
+run-thing:
+	@poetry run streamlit run mortgage_calculator/populate_data.py
+
 test:
 	@poetry run pytest
 
