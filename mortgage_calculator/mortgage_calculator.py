@@ -7,28 +7,26 @@ from math import *
 from utils import *
 from utils_finance import *
 from st_text import *
+from dataclasses import dataclass
 
 
 SHOW_TEXT = False
 MONTHS = np.arange(360)
 CURRENT_YEAR = 2024
 
-st.set_page_config(layout="wide")
-st.title("Mortgage Simulator")
-
-if SHOW_TEXT:
-    get_intro()
-
 
 # load resource data files to populate drop downs
-
 @st.cache_data
-def load_data():
+def load_housing_data():
     return pd.read_csv('./mortgage_calculator/data/city_housing_data.csv')
 
-housing_df = load_data()
 
-def get_associated_data(selected_options):
+@st.cache_data
+def get_city_options(housing_df):
+    return housing_df["region"].unique()
+
+
+def get_associated_data(selected_options, housing_df):
     row = housing_df[housing_df["region"] == selected_options]
     return (
         row["median_sale_price"].values[0], 
@@ -38,148 +36,226 @@ def get_associated_data(selected_options):
         row["property_tax_rate"].values[0],
     )
 
-@st.cache_data
-def get_city_options():
-    return housing_df["region"].unique()
 
-city_options = get_city_options()
-
-#Other than the string inputs, rates are always expressed as a decimal between 0 and 1
-with st.sidebar:
-    st.title("Your City")
-
-    # todo add zip code, metro area, etc
-    city = st.selectbox("Select City", city_options)
-
-    # get values from city
-    median_sale_price, median_ppsf, median_sale_price_cagr, median_ppsf_cagr, property_tax_rate = get_associated_data(city)
-
-    st.title("Mortgage")
-    init_home_value = st.number_input("Home Price ($)", min_value=0, max_value=10000000, value=int(median_sale_price), step=1000)
-    down_payment = st.number_input("Down Payment ($)", min_value=0, value=50000, step=1000)
-    interest_rate = st.number_input("Interest Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1) / 100
-    closing_costs_rate = st.number_input("Closing Costs (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
-    pmi_rate = st.number_input("PMI Rate (%)", min_value=0.0, max_value=5.0, value=0.5, step=0.1) / 100
-
-    st.title("Other Home Costs")
-    property_tax_rate = st.number_input("Property Tax Rate (%)", min_value=0.0, max_value=3.0, value=property_tax_rate, step=0.1) / 100
-    insurance_rate = st.number_input("Homeowners Insurance Rate (%)", min_value=0.0, max_value=3.0, value=0.35, step=0.1) / 100
-    init_hoa_fees = st.number_input("HOA Fees ($)", min_value=0, max_value=10000, value=100, step=10)
-    init_monthly_maintenance = st.number_input("Monthly Maintenance ($)", min_value=0, max_value=10000, value=50, step=10)
-
-    st.title("Home Value Growth")
-    yearly_home_value_growth = st.number_input("Yearly Home Value Growth (%)", min_value=0.0, max_value=10.0, value=median_sale_price_cagr*100, step=0.1) / 100
-
-    st.title("Home Selling Costs")
-    realtor_rate = st.number_input("Percent of HV paid to realtor (%)", min_value=0.0, max_value=10.0, value=6.0, step=0.1) / 100
-    sell_closing_costs_rate = st.number_input("Selling Closing Costs (%)", min_value=0.0, max_value=10.0, value=1.0, step=0.1) / 100
-    additional_selling_costs = st.number_input("Additional Selling Costs ($)", min_value=0, max_value=10000, value=5000, step=100)
-
-    st.title("Inflation Rate")
-    inflation_rate = st.number_input("Inflation Rate (%)", min_value=0.01, max_value=10.0, value=3.0, step=0.1) / 100
-
-    st.title("Rent")
-    init_rent = st.number_input("Current Monthly Rent ($)", min_value=0, max_value=10000, value=1300, step=10)
-    yearly_rent_increase = st.number_input("Yearly Rent Increase (%)", min_value=0.0, max_value=10.0, value=3.0, step=0.1) / 100
-
-    st.title("Stock")
-    stock_market_growth_rate = st.number_input("Stock Return Rate (%)", min_value=0.0, max_value=10.0, value=7.0, step=0.1) / 100
-    stock_tax_rate = st.number_input("Stock Tax Rate (%)", min_value=0.0, max_value=100.0, value=15.0, step=0.1) / 100
+def rate_input(label, default, min_value=0.0, max_value=99.0, step=0.1):
+    return st.number_input(label=f"{label} (%)", min_value=min_value, max_value=max_value, value=default, step=step) / 100
 
 
-# set once
-closing_costs = init_home_value * closing_costs_rate
-effective_down_payment = max(down_payment - closing_costs, 0)
-loan_amount = init_home_value - effective_down_payment
-monthly_payment = get_monthly_payment_amount(loan_amount, interest_rate)
-
-# update yearly
-# home
-pmi_cost = get_monthly_pmi(init_home_value, loan_amount, pmi_rate, init_home_value)
-property_tax_cost = init_home_value * property_tax_rate / 12
-insurance_cost = init_home_value * insurance_rate / 12
-hoa_costs = init_hoa_fees
-maintenance_costs = init_monthly_maintenance
-# rent / stock
-rent = init_rent
-portfolio_value = down_payment
-
-# update monthly
-loan_balance = loan_amount
-home_value = init_home_value
-pmi_required = pmi_cost > 0
+def dollar_input(label, default, min_value=0, max_value=1e8):
+    # function that will calculate the step input based on the default value where the step is
+    # 1eN where N is one less than the number of digits in the default value
+    step=10
+    if default > 100:
+        step = int(10 ** (floor(log10(default)) - 1))
+    return st.number_input(f"{label} ($)", min_value=min_value, max_value=int(max_value), value=int(default), step=step)
 
 
-# only wrinkle with cumulative values is that effective down payment is added to first principal payment
-# and closing costs are added to first misc payment
-# each row represents cost at the end of that month and the values at the end of that month
-# first row, 0 is the end of the first month since closing
+@dataclass
+class MortgageInputs:
+    city: str
+    init_home_value: float
+    down_payment: float
+    interest_rate: float
+    yearly_home_value_growth: float
+    property_tax_rate: float
 
-data = []
-for month in MONTHS:
 
-    month_data = {
-        "index": month,
-        "year": month // 12,
-        "month": month % 12,
-    }
+@dataclass
+class OtherFactorsInputs:
+    closing_costs_rate: float
+    pmi_rate: float
+    insurance_rate: float
+    init_hoa_fees: float
+    init_monthly_maintenance: float
+    inflation_rate: float
 
-    # pay all your stuff at the beginning of the month
-    month_data["interest"] = loan_balance * interest_rate / 12
-    month_data["principal"] = monthly_payment - month_data["interest"]
-    month_data["property_tax"] = property_tax_cost
-    month_data["insurance"] = insurance_cost
-    month_data["hoa"] = hoa_costs
-    month_data["maintenance"] = maintenance_costs
-    if pmi_required:
-        month_data["pmi"] = pmi_cost
+
+@dataclass
+class HomeSellingCostsInputs:
+    realtor_rate: float
+    sell_closing_costs_rate: float
+    additional_selling_costs: float
+
+    
+@dataclass
+class RentStockInputs:
+    init_rent: float
+    yearly_rent_increase: float
+    stock_market_growth_rate: float
+    stock_tax_rate: float
+
+
+def get_mortgage_inputs(city_options, housing_df):
+    st.header("Mortgage", anchor="mortgage")
+    col1, col2, col3, col4, col5, col6 = st.columns([1,1,1,1,1,1])
+    with col1:
+        # todo add zip code, metro area, etc
+        city = st.selectbox("City", city_options)
+        median_sale_price, median_ppsf, median_sale_price_cagr, median_ppsf_cagr, property_tax_rate = get_associated_data(city, housing_df)
+    with col2:
+        init_home_value = dollar_input("Home Price", median_sale_price)
+    with col3:
+        down_payment = dollar_input("Down Payment", 50000)
+    with col4:
+        interest_rate = rate_input("Interest Rate", 7.0)
+    with col5:
+        yearly_home_value_growth = rate_input("Yearly Home Value Growth", median_sale_price_cagr*100)
+    with col6:
+        property_tax_rate = rate_input("Property Tax Rate", property_tax_rate)
+
+    return MortgageInputs(city, init_home_value, down_payment, interest_rate, yearly_home_value_growth, property_tax_rate)
+
+
+def get_other_factors_inputs(show_other_factors):
+    if show_other_factors:
+        col1, col2, col3, col4, col5, col6 = st.columns([1,1,1,1,1,1])
+        with col1:
+            closing_costs_rate = rate_input("Closing Costs", 3.0)
+        with col2:
+            pmi_rate = rate_input("PMI Rate", 0.5)
+        with col3:
+            insurance_rate = rate_input("Homeowners Insurance Rate", 0.35)
+        with col4:
+            init_hoa_fees = dollar_input("HOA Fees", 0)
+        with col5:
+            init_monthly_maintenance = dollar_input("Monthly Maintenance", 0)
+        with col6:
+            inflation_rate = rate_input("Inflation Rate", 3.0)
+
+        return OtherFactorsInputs(closing_costs_rate, pmi_rate, insurance_rate, init_hoa_fees, init_monthly_maintenance, inflation_rate)
     else:
-        month_data["pmi"] = 0
-
-    month_data["rent"] = rent
-
-    # end of month, update values
-
-    # update portfolio value
-    contribution = (monthly_payment + property_tax_cost + insurance_cost + hoa_costs + maintenance_costs + month_data["pmi"]) - rent
-    contribution = max(contribution, 0)
-    portfolio_value = add_growth(portfolio_value, stock_market_growth_rate, 1, contribution)
-    month_data["portfolio_value"] = portfolio_value
-
-    # update loan balance
-    loan_balance -= month_data["principal"]
-    month_data["loan_balance"] = loan_balance
-
-    # update home value
-    home_value = add_growth(home_value, yearly_home_value_growth, months=1)
-    month_data["home_value"] = home_value
-
-    # update monthly maintenance costs
-    maintenance_costs = add_growth(maintenance_costs, inflation_rate, months=1)
-
-    # update if pmi is required but dont update value unless its end of year
-    true_pmi = get_monthly_pmi(home_value, loan_balance, pmi_rate, init_home_value)
-    pmi_required = true_pmi > 0
+        closing_costs_rate = 3.0
+        pmi_rate = 0.5
+        insurance_rate = 0.35
+        init_hoa_fees = 0
+        init_monthly_maintenance = 0
+        inflation_rate = 3.0
+        return OtherFactorsInputs(closing_costs_rate, pmi_rate, insurance_rate, init_hoa_fees, init_monthly_maintenance, inflation_rate)
 
 
-    # update yearly values at end of last month in each year
-    if (month + 1) % 12 == 0 and month > 0:
-        property_tax_cost = home_value * property_tax_rate / 12
-        insurance_cost = home_value * insurance_rate / 12
-        hoa_costs = add_growth(hoa_costs, inflation_rate, 12)
-        pmi_cost = true_pmi
-        rent = add_growth(rent, yearly_rent_increase, 12)
+def get_home_selling_costs_inputs():
+    st.header("Home Selling Costs")
+    col1, col2, col3, _, _, _ = st.columns([1,1,1,1,1,1])
+    with col1:
+        realtor_rate = rate_input("Realtor Fee", 6.0)
+    with col2:
+        sell_closing_costs_rate = rate_input("Selling Closing Costs", 1.0)
+    with col3:
+        additional_selling_costs = dollar_input("Additional Selling Costs", 5000)
 
-    data.append(month_data)
+    return HomeSellingCostsInputs(realtor_rate, sell_closing_costs_rate, additional_selling_costs)
+
+
+def get_rent_stock_inputs():
+    st.header("Rent + Stock")
+    col1, col2, col3, col4, _, _ = st.columns([1,1,1,1,1,1])
+    with col1:
+        init_rent = dollar_input("Current Monthly Rent", 2000)
+    with col2:
+        yearly_rent_increase = rate_input("Yearly Rent Increase", 3.0)
+    with col3:
+        stock_market_growth_rate = rate_input("Stock Return Rate", 7.0)
+    with col4:
+        stock_tax_rate = rate_input("Stock Tax Rate", 15.0)
+
+    return RentStockInputs(init_rent, yearly_rent_increase, stock_market_growth_rate, stock_tax_rate)
+
+
+def run_simluation(mort, other, sell, rent_stock):
+
+    # set once
+    closing_costs = mort.init_home_value * other.closing_costs_rate
+    effective_down_payment = max(mort.down_payment - closing_costs, 0)
+    loan_amount = mort.init_home_value - effective_down_payment
+    monthly_payment = get_monthly_payment_amount(loan_amount, mort.interest_rate)
+
+    # update yearly
+    # home
+    pmi_cost = get_monthly_pmi(mort.init_home_value, loan_amount, other.pmi_rate, mort.init_home_value)
+    property_tax_cost = mort.init_home_value * mort.property_tax_rate / 12
+    insurance_cost = mort.init_home_value * other.insurance_rate / 12
+    hoa_costs = other.init_hoa_fees
+    maintenance_costs = other.init_monthly_maintenance
+    # rent / stock
+    rent = rent_stock.init_rent
+    portfolio_value = mort.down_payment
+
+    # update monthly
+    loan_balance = loan_amount
+    home_value = mort.init_home_value
+    pmi_required = pmi_cost > 0
+
+    # only wrinkle with cumulative values is that effective down payment is added to first principal payment
+    # and closing costs are added to first misc payment
+    # each row represents cost at the end of that month and the values at the end of that month
+    # first row, 0 is the end of the first month since closing
+
+    data = []
+    for month in MONTHS:
+
+        month_data = {
+            "index": month,
+            "year": month // 12,
+            "month": month % 12,
+        }
+
+        # pay all your stuff at the beginning of the month
+        month_data["interest"] = loan_balance * mort.interest_rate / 12
+        month_data["principal"] = monthly_payment - month_data["interest"]
+        month_data["property_tax"] = property_tax_cost
+        month_data["insurance"] = insurance_cost
+        month_data["hoa"] = hoa_costs
+        month_data["maintenance"] = maintenance_costs
+        if pmi_required:
+            month_data["pmi"] = pmi_cost
+        else:
+            month_data["pmi"] = 0
+
+        month_data["rent"] = rent
+
+        # end of month, update values
+
+        # update portfolio value
+        contribution = (monthly_payment + property_tax_cost + insurance_cost + hoa_costs + maintenance_costs + month_data["pmi"]) - rent
+        contribution = max(contribution, 0)
+        portfolio_value = add_growth(portfolio_value, rent_stock.stock_market_growth_rate, 1, contribution)
+        month_data["portfolio_value"] = portfolio_value
+
+        # update loan balance
+        loan_balance -= month_data["principal"]
+        month_data["loan_balance"] = loan_balance
+
+        # update home value
+        home_value = add_growth(home_value, mort.yearly_home_value_growth, months=1)
+        month_data["home_value"] = home_value
+
+        # update monthly maintenance costs
+        maintenance_costs = add_growth(maintenance_costs, other.inflation_rate, months=1)
+
+        # update if pmi is required but dont update value unless its end of year
+        true_pmi = get_monthly_pmi(home_value, loan_balance, other.pmi_rate, mort.init_home_value)
+        pmi_required = true_pmi > 0
+
+
+        # update yearly values at end of last month in each year
+        if (month + 1) % 12 == 0 and month > 0:
+            property_tax_cost = home_value * mort.property_tax_rate / 12
+            insurance_cost = home_value * other.insurance_rate / 12
+            hoa_costs = add_growth(hoa_costs, other.inflation_rate, 12)
+            pmi_cost = true_pmi
+            rent = add_growth(rent, rent_stock.yearly_rent_increase, 12)
+
+        data.append(month_data)
+
+    return pd.DataFrame(data)
 
 
 COST_COLS = ["interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance"]
 
 
-def get_sim_monthly_df(data):
+def get_sim_monthly_df(monthly_df):
     """Append additional columns to the data frame. Get yearly dataframe summary."""
 
-    monthly_df = pd.DataFrame(data)
     monthly_df = monthly_df.set_index("index")
 
     # add total and misc columns
@@ -230,17 +306,20 @@ def get_sim_yearly_df(monthly_df):
     return yearly_df
 
 
-def add_cip(df):
+def add_cip(df, mort, other, sell, rent):
     """
     Your money: equity - (closing costs, interest, misc, realtor fees)
     """
 
+    # having to calculate twice. Organize that more.
+    closing_costs = mort.init_home_value * other.closing_costs_rate
+
     df["equity"] = df["home_value_max"] - df["loan_balance_max"]
     df["cip_homeownership"] = \
-        (df["equity"] * (1-realtor_rate-sell_closing_costs_rate)) \
-            - closing_costs - df["cum_interest_sum"] - df["cum_misc_sum"] - additional_selling_costs
+        (df["equity"] * (1-sell.realtor_rate-sell.sell_closing_costs_rate)) \
+            - closing_costs - df["cum_interest_sum"] - df["cum_misc_sum"] - sell.additional_selling_costs
     
-    df["cip_renting"] = df["portfolio_max"] * (1-stock_tax_rate) - df["cum_rent_sum"]
+    df["cip_renting"] = df["portfolio_max"] * (1-rent.stock_tax_rate) - df["cum_rent_sum"]
 
 
 def format_df_row_values(df, row_num, cols):
@@ -265,28 +344,6 @@ def disaply_pie_chart(df):
     fig.update_layout(height=600, showlegend=False)
     fig.update_traces(textposition='outside', text=first_year_df["formatted_value"], textinfo='label+text')
     fig_display(fig)
-
-
-# get dataframes
-monthly_df = get_sim_monthly_df(data)
-yearly_df = get_sim_yearly_df(monthly_df)
-add_cip(yearly_df)
-mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
-first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
-
-
-# display dataframes for debug
-#st.write(monthly_df)
-#st.write(yearly_df)
-#st.write(first_year_df)
-
-
-if SHOW_TEXT:
-    get_monthly_intro()
-
-
-# monthly payment pie chart
-disaply_pie_chart(first_year_df)
 
 
 def display_stacked_bar_chart(df, cols, names, title):
@@ -319,41 +376,14 @@ def display_line_chart(df, cols, names, title):
     fig_display(fig)
 
 
-
-def display_stacked_line_chart(df, cols, names, title):
-    # Somthing is wrong with this function
-
-    """df must have columns: name, value, formatted_value"""
-    assert len(cols) == len(names)
-
-    fig = go.Figure()
-    
-    fill_type = "tozeroy"
-    for i in range(len(cols)):
-        st.write(f"i: {i}")
-        vals = df[cols[i]]
-        name = names[i]
-
-        for j in range(0, i):
-            st.write(f"j: {j}")
-            vals += df[cols[j]]
-            
-        fig.add_trace(go.Scatter(x=df.index, y=vals, mode='lines', name=name, fill=fill_type))
-        fill_type = "tonexty"
-
-    fig.update_layout(title=title,
-                      xaxis=get_xaxis(CURRENT_YEAR),
-                      yaxis=get_yaxis(),
-                      height=700)
-    fig_display(fig)
-
-def calculate_summary():
+def calculate_summary(mort, other, sell, rent):
     # add table that shows summary of the mortgage stuff
     summary_values = {
-        "home_price": init_home_value,
-        "effective_down_payment": effective_down_payment,
-        "closing_costs": closing_costs,
-        "total_loan_amount": loan_amount,
+        "home_price": mort.init_home_value,
+        # TODO fix some things
+        #"effective_down_payment": effective_down_payment,
+        #"closing_costs": closing_costs,
+        #"total_loan_amount": loan_amount,
         # excludes down payment and closing costs
         "total_home_paid": sum(yearly_df["total_sum"]),
         "total_interest_paid": sum(yearly_df["interest_sum"]),
@@ -375,23 +405,45 @@ def calculate_summary():
     st.write(padded_dict)
 
 
-calculate_summary()
+st.set_page_config(layout="wide")
+st.title("Mortgage Simulator")
+
+if SHOW_TEXT:
+    get_intro()
+
+# get dataframes
+housing_df = load_housing_data()
+city_options = get_city_options(housing_df)
+mortgage_inputs = get_mortgage_inputs(city_options, housing_df)
+show_other_factors = st.checkbox("Show Other Costs")
+other_factors_inputs = get_other_factors_inputs(show_other_factors)
+sell_inputs = get_home_selling_costs_inputs()
+rent_inputs = get_rent_stock_inputs()
+
+sim_df = run_simluation(mortgage_inputs, other_factors_inputs, sell_inputs, rent_inputs)
+monthly_df = get_sim_monthly_df(sim_df)
+yearly_df = get_sim_yearly_df(monthly_df)
+add_cip(yearly_df, mortgage_inputs, other_factors_inputs, sell_inputs, rent_inputs)
+mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
+first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
+
+
+# display dataframes for debug
+#st.write(monthly_df)
+#st.write(yearly_df)
+#st.write(first_year_df)
+
+
+if SHOW_TEXT:
+    get_monthly_intro()
+
+
+# monthly payment pie chart
+disaply_pie_chart(first_year_df)
+
+calculate_summary(mortgage_inputs, other_factors_inputs, sell_inputs, rent_inputs)
 
 # Monthly
-    
-# display_line_chart(
-#     yearly_df, 
-#     cols=["total_mean", "principal_mean", "interest_mean", "misc_mean"], 
-#     names=["Total", "Principal", "Interest", "Misc"],
-#     title="Monthly Costs"
-# )
-
-# display_stacked_bar_chart(
-#     yearly_df, 
-#     cols=["interest_mean", "principal_mean", "misc_mean"], 
-#     names=["Interest", "Principal", "Misc"],
-#     title="Monthly Costs"
-# )
 
 display_stacked_bar_chart(
     yearly_df, 
@@ -400,26 +452,10 @@ display_stacked_bar_chart(
     title="Monthly Costs"
 )
 
-
 # Cumulative
 
 if SHOW_TEXT:
     get_cumulative_intro()
-
-
-# display_line_chart(
-#     yearly_df, 
-#     cols=["cum_total_sum", "cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
-#     names=["Total", "Principal", "Interest", "Misc"],
-#     title="Cumulative Costs"
-# )
-
-# display_stacked_bar_chart(
-#     yearly_df, 
-#     cols=["cum_principal_sum", "cum_interest_sum", "cum_misc_sum"], 
-#     names=["Principal", "Interest", "Misc"],
-#     title="Cumulative Costs"
-# )
 
 
 # cash in pocket
