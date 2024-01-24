@@ -29,5 +29,5 @@ def fig_update(fig):
 
 
 def fig_display(fig):
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+    st.plotly_chart(fig, config={'displayModeBar': False}, use_container_width=False)
 

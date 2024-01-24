@@ -7,7 +7,10 @@ def get_intro():
     ### Introduction to Using the Mortgage Simulator
 
     Welcome to the Mortgage Simulator! This interactive tool is designed to help you navigate the financial landscape of home ownership. Whether you're a first-time homebuyer, a current homeowner considering refinancing, or simply exploring the cost-benefit analysis of owning versus renting, this simulator offers valuable insights into the complexities of mortgages and real estate investments.
-
+    """)
+        
+def more_intro():
+    st.markdown("""
     To get started, you'll enter various parameters that affect the cost of buying and owning a home. These include:
 
     1. **Home Price ($)**: The purchase price of the home you're considering.
@@ -17,7 +20,6 @@ def get_intro():
     5. **PMI Rate (%)**: If your down payment is less than 20% of the home price, Private Mortgage Insurance (PMI) applies.
     6. **State Property Tax**: Select your state to apply its specific property tax rate.
     7. **Homeowners Insurance Rate (%)**: Annual insurance rate based on the home's value.
-
     In addition to these home-buying specifics, you can also input data related to renting and investing in the stock market. This allows you to compare the long-term financial outcomes of owning a home versus renting and investing the surplus money.
 
     1. **Yearly Home Value Growth (%)**: The expected annual appreciation rate of your home's value.
