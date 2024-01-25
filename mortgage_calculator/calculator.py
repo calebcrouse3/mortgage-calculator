@@ -1,7 +1,9 @@
 from math import *
 from dataclasses import dataclass
+from time import sleep
 
 import streamlit as st
+from streamlit import components
 from streamlit import session_state as ssts
 import numpy as np
 import pandas as pd
@@ -65,7 +67,8 @@ def initialize_session_state():
         ssts[Key.region] = region_options[0]
         housing_data = get_associated_data(region_options[0])
 
-        ssts[Key.init_home_value] = int(housing_data.med_price)
+        #ssts[Key.init_home_value] = int(housing_data.med_price)
+        ssts[Key.init_home_value] = 300000
         ssts[Key.down_payment] = 50000
         ssts[Key.interest_rate] = 7.0
         ssts[Key.yearly_home_value_growth] = housing_data.med_price_cagr * 100
@@ -93,12 +96,16 @@ def update_region():
     """Unique function for updating region because it has to change other values."""
 
     housing_data = get_associated_data(ssts[Key.region])
-    ssts[Key.init_home_value] = housing_data.med_price
+    #ssts[Key.init_home_value] = housing_data.med_price
     ssts[Key.yearly_home_value_growth] = housing_data.med_price_cagr * 100
     ssts[Key.property_tax_rate] = housing_data.tax_rate
 
 
-def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1):
+def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asterisk=False):
+ 
+    if asterisk:
+        label = ":orange[**]" + label
+    
     percent = st.number_input(
         label=f"{label} (%)", 
         min_value=min_value, 
@@ -109,14 +116,14 @@ def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1):
     return percent
 
 
-def dollar_input(label, key=None, min_value=0, max_value=1e8):
+def dollar_input(label, key=None, min_value=0, max_value=1e8, step=10, asterisk=False):
     """Function that will calculate the step input based on the default value.
     The step is 1eN where N is one less than the number of digits in the default value.
     """
 
-    step=10
-    #if default > 100:
-    #    step = int(10 ** (floor(log10(default)) - 1))
+    if asterisk:
+        label = ":orange[**]" + label
+
     return st.number_input(
         f"{label} ($)",
         min_value=int(min_value), 
@@ -145,14 +152,14 @@ def mortgage_inputs():
         lambda: dollar_input("Down Payment", Key.down_payment),
     ])
     populate_columns([
-        lambda: rate_input("Interest Rate", Key.interest_rate),
-        lambda: rate_input("Yearly Home Value Growth", Key.yearly_home_value_growth),
-        lambda: rate_input("Property Tax Rate", Key.property_tax_rate)
+        lambda: rate_input("Interest", Key.interest_rate),
+        lambda: rate_input("Home Value Growth", Key.yearly_home_value_growth, asterisk=True),
+        lambda: rate_input("Property Tax", Key.property_tax_rate, asterisk=True)
     ])
 
 
 def other_inputs():
-    with st.expander("Expand for More Inputs", expanded=False):
+    with st.expander("Additional Mortgage Inputs", expanded=False):
         populate_columns([
             lambda: rate_input("Closing Costs", Key.closing_costs_rate),
             lambda: rate_input("PMI Rate", Key.pmi_rate),
@@ -165,21 +172,21 @@ def other_inputs():
         ], 3)
 
 
-def selling_inputs():
-    with st.expander("Home Selling Inputs", expanded=False):
-        populate_columns([
-            lambda: rate_input("Realtor Fee", Key.realtor_rate),
-            lambda: rate_input("Selling Closing Costs", Key.sell_closing_costs_rate),
-            lambda: dollar_input("Additional Selling Costs", Key.additional_selling_costs)
-        ], 3)
-
-
 def renting_inputs():
     with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
             lambda: dollar_input("Current Monthly Rent", Key.rent),
             lambda: rate_input("Yearly Rent Increase", Key.rent_increase),
             lambda: rate_input("Stock Return Rate", Key.stock_growth_rate)
+        ], 3)
+
+
+def selling_inputs():
+    with st.expander("Home Selling Inputs", expanded=False):
+        populate_columns([
+            lambda: rate_input("Realtor Fee", Key.realtor_rate),
+            lambda: rate_input("Selling Closing Costs", Key.sell_closing_costs_rate),
+            lambda: dollar_input("Additional Selling Costs", Key.additional_selling_costs)
         ], 3)
         populate_columns([
             lambda: rate_input("Stock Tax Rate", Key.stock_tax_rate)
@@ -280,63 +287,68 @@ def run_simulation():
 COST_COLS = ["interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance"]
 
 
-def post_process_sim_df(monthly_df):
-    monthly_df = monthly_df.set_index("index")
+def post_process_mon_df(mon_df):
+    mon_df = mon_df.set_index("index")
 
     # add total and misc columns
-    monthly_df["total"] = monthly_df[
-        COST_COLS
-    ].sum(axis=1)
-    monthly_df["misc"] = monthly_df[
-        ["pmi", "insurance", "property_tax", "hoa", "maintenance"]
-    ].sum(axis=1)
+    mon_df["total"] = mon_df[COST_COLS].sum(axis=1)
+    mon_df["misc"] = mon_df[["pmi", "insurance", "property_tax", "hoa", "maintenance"]].sum(axis=1)
 
-    yearly_df = monthly_df.groupby("year").agg(
-        # sum cols
-        pmi_sum=("pmi", "sum"),
-        insurance_sum=("insurance", "sum"),
-        property_tax_sum=("property_tax", "sum"),
-        hoa_sum=("hoa", "sum"),
-        maintenance_sum=("maintenance", "sum"),
-        interest_sum=("interest", "sum"),
-        principal_sum=("principal", "sum"),
-        misc_sum=("misc", "sum"),
-        total_sum=("total", "sum"),
-        rent_sum=("rent", "sum"),
-        # mean cols
-        pmi_mean=("pmi", "mean"),
-        insurance_mean=("insurance", "mean"),
-        property_tax_mean=("property_tax", "mean"),
-        hoa_mean=("hoa", "mean"),
-        maintenance_mean=("maintenance", "mean"),
-        interest_mean=("interest", "mean"),
-        principal_mean=("principal", "mean"),
-        misc_mean=("misc", "mean"),
-        total_mean=("total", "mean"),
-        # home value max
-        home_value_max=("home_value", "max"),
-        loan_balance_max=("loan_balance", "max"),
-        portfolio_max=("portfolio_value", "max"),
-    )
+    # List of columns for sum and mean aggregations
+    sum_mean_cols = [
+        "pmi", "insurance", "property_tax", "hoa", 
+        "maintenance", "interest", "principal", 
+        "misc", "total", "rent"
+    ]
+
+    # Columns for max aggregation
+    max_cols = ["home_value", "loan_balance", "portfolio_value"]
+
+    # Generate aggregation dictionary
+    agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
+    agg_dict.update({col: 'max' for col in max_cols})
+
+    # Group and aggregate
+    year_df = mon_df.groupby("year").agg(agg_dict)
+
+    # Renaming columns for clarity
+    year_df.columns = [f"{col}_{func}" for col, func in year_df.columns]
 
     # cumulative cols for principal, interest, total, misc
-    cumulative_df = yearly_df[["total_sum", "interest_sum", "principal_sum", "misc_sum", "rent_sum"]].cumsum()
-    cumulative_df.columns = [f"cum_{colname}" for colname in cumulative_df.columns]
+    cols_to_cumsum = ["total_sum", "interest_sum", "principal_sum", "misc_sum", "rent_sum"]
 
-    yearly_df = pd.concat([yearly_df, cumulative_df], axis=1)
+    for col in cols_to_cumsum:
+        year_df[f'cum_{col}'] = year_df[col].cumsum()
 
+    # Define rates and costs upfront for clarity
     realtor_rate = ssts_rate(Key.realtor_rate)
     sell_closing_costs_rate = ssts_rate(Key.sell_closing_costs_rate)
-    additional_selling_costs = ssts[Key.additional_selling_costs]
     closing_costs = ssts_rate(Key.closing_costs_rate) * ssts[Key.init_home_value]
+    additional_selling_costs = ssts[Key.additional_selling_costs]
+    stock_tax_rate = ssts_rate(Key.stock_tax_rate)
 
-    yearly_df["equity"] = yearly_df["home_value_max"] - yearly_df["loan_balance_max"]
-    yearly_df["cip_homeownership"] = \
-        (yearly_df["equity"] * (1-realtor_rate-sell_closing_costs_rate)) \
-            - closing_costs - yearly_df["cum_interest_sum"] - yearly_df["cum_misc_sum"] - additional_selling_costs
-    
-    yearly_df["cip_renting"] = yearly_df["portfolio_max"] * (1-ssts_rate(Key.stock_tax_rate)) - yearly_df["cum_rent_sum"]
-    return yearly_df
+    # Calculate equity
+    year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_max"]
+
+    # money you pay that doesnt go towards equity
+    year_df["home_costs"] = closing_costs + year_df["cum_interest_sum"] + year_df["cum_misc_sum"]
+    year_df["selling_costs"] = year_df["equity"] * (realtor_rate + sell_closing_costs_rate) + additional_selling_costs
+    year_df["equity_less_costs"] = year_df["equity"] - year_df["home_costs"]
+
+    # TODO should incorperate selling costs and stock taxes?
+    # could there be other exist strategies
+
+    # Calculate cost of selling property (Cost Incurred from Property Sale)
+    # year_df["cip_homeownership"] = year_df["equity_less_costs"] - year_df["home_costs"]
+
+    # Calculate cost of renting (Cost Incurred from Renting)
+    # year_df["cip_renting"] = year_df["portfolio_value_max"] * (1 - stock_tax_rate) - year_df["cum_rent_sum"]
+
+    year_df["stocks_less_renting"] = year_df["portfolio_value_max"] * (1 - stock_tax_rate) - year_df["cum_rent_sum"]
+
+
+
+    return year_df
 
 
 def format_label_string(label):
@@ -440,19 +452,15 @@ def display_line_chart(df, cols, names, title):
 
 
 def calculate_summary(yearly_df):
-    # add table that shows summary of the mortgage stuff
+    closing_costs = ssts[Key.init_home_value] * ssts_rate(Key.closing_costs_rate)
+    effective_down_payment = max(ssts[Key.down_payment] - closing_costs, 0)
     summary_values = {
-        "home_price": ssts[Key.init_home_value],
-        # TODO fix some things
-        #"effective_down_payment": effective_down_payment,
-        #"closing_costs": closing_costs,
-        #"total_loan_amount": loan_amount,
-        # excludes down payment and closing costs
-        "total_home_paid": sum(yearly_df["total_sum"]),
-        "total_interest_paid": sum(yearly_df["interest_sum"]),
-        "total_tax_paid": sum(yearly_df["property_tax_sum"]),
-        "total_pmi_paid": sum(yearly_df["pmi_sum"]),
-        "number_of_pmi_payments": len([x for x in monthly_df["pmi"] if x > 0]),
+        "closing_costs": closing_costs,
+        "effective_down_payment": effective_down_payment,
+        "loan_amount": ssts[Key.init_home_value] - effective_down_payment,
+        "mortgage_payments": sum(yearly_df["total_sum"]),
+        "interest_paid": sum(yearly_df["interest_sum"]),
+        "tax_paid": sum(yearly_df["property_tax_sum"]),
     }
 
     # format keys and values as strings
@@ -466,6 +474,46 @@ def calculate_summary(yearly_df):
     padded_dict = {key.ljust(max_key_length): value.rjust(max_value_length) for key, value in summary_values.items()}
 
     st.write(padded_dict)
+
+
+def summary_metrics(yearly_df):
+
+    closing_costs = ssts[Key.init_home_value] * ssts_rate(Key.closing_costs_rate)
+    effective_down_payment = max(ssts[Key.down_payment] - closing_costs, 0)
+
+    metrics_col1 = {
+        "Loan Amount": ssts[Key.init_home_value] - effective_down_payment,
+        "Closing Costs": closing_costs,
+        "Effective Down Payments": effective_down_payment,
+        "Monthly Payments": 1,
+    }
+
+    metrics_col2 = {
+        "Mortgage Payments": sum(yearly_df['total_sum']),
+        "Interest Paid": sum(yearly_df['interest_sum']),
+        "Taxes Paid": sum(yearly_df['property_tax_sum']),  
+        "Other Expenses Paid": sum(yearly_df['misc_sum']),
+        "PMI": sum(yearly_df['pmi_sum']),
+    }
+    
+    def format_values(metrics):
+        for key in metrics:
+            metrics[key] = format_currency(metrics[key])
+
+    format_values(metrics_col1)
+    format_values(metrics_col2)
+
+    # Using columns to layout the summary values
+    _, col1, col2 = st.columns([1, 2, 2])
+
+    with col1:
+        for key, value in metrics_col1.items():
+            st.metric(label=key, value=value, delta="")
+
+    with col2:
+        for key, value in metrics_col2.items():
+            st.metric(label=key, value=value)
+
 
 
 def hide_fullscreen_button():
@@ -484,33 +532,39 @@ def drop_sum_zero(df, cols):
     return drop_cols[drop_cols].index
 
 
-def main():
+def run_calculator():
 
     initialize_session_state()
     hide_fullscreen_button()
 
-    yearly_df = post_process_sim_df(run_simulation())
+    yearly_df = post_process_mon_df(run_simulation())
 
     mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
     first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
 
-    col1, _, col2 = st.columns([3, .5, 3])
+    col1, _, col2 = st.columns([2, .2, 3])
 
     with col1:
         get_intro()
         mortgage_inputs()
         other_inputs()
-        selling_inputs()
         renting_inputs()
-    with col2:
-        mp, mp_ot, summary, renting = st.tabs([
-            "Monthly Payments", "Monthly Payments over Time", "Summary", "Rent Comparison"
-            ])
+        selling_inputs()
 
-        with mp:
+    with col2:
+        tab_mp, tab_mpot, tab_hv, tab_rent, tab_summary = st.tabs([ 
+            "Monthly Payments", 
+            "Monthly Payments Over Time", 
+            "Home Value",
+            "Rent Comparison", 
+            "Summary"
+        ])
+
+        with tab_mp:
+            sleep(0.1)
             disaply_pie_chart(first_year_df)
 
-        with mp_ot:
+        with tab_mpot:
             cols = [f"{x}_mean" for x in COST_COLS]
             drop_cols = drop_sum_zero(yearly_df, cols)
             cols = [x for x in cols if x not in drop_cols]
@@ -523,15 +577,23 @@ def main():
                 title="Monthly Costs"
             )
 
-        with summary:
-            st.header("An owl")
-            #calculate_summary()
-            st.image("https://static.streamlit.io/examples/owl.jpg", width=200, use_column_width=True)
-
-        with renting:
+        with tab_hv:
             display_line_chart(
                 yearly_df, 
-                cols=["cip_homeownership", "cip_renting"], 
-                names=["Own", "Rent"],
-                title="Cumulative Net Cash in Pocket"
+                cols=["equity", "equity_less_costs", "home_value_max"],
+                names=["Equity", "Equity - Costs", "Home Value"],
+                title="Cumulative Costs / Values"
             )
+
+        with tab_rent:
+            display_line_chart(
+                yearly_df,
+                cols=["equity_less_costs", "stocks_less_renting"], 
+                names=["Equity - Costs", "Stock Portfolio - Renting"],
+                title="Renting vs. Homeownership"
+            )
+
+        with tab_summary:
+            summary_metrics(yearly_df)
+
+run_calculator()

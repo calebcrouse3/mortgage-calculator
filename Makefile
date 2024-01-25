@@ -1,5 +1,5 @@
 run:
-	@poetry run streamlit run mortgage_calculator/run.py
+	@poetry run streamlit run mortgage_calculator/calculator.py
 
 test:
 	@poetry run pytest tests/test_utils_finance.py
