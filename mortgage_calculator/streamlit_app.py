@@ -1,21 +1,22 @@
+from math import *
+from dataclasses import dataclass
+
 import streamlit as st
 from streamlit import session_state as ssts
 import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 import plotly.express as px
-import pandas as pd
-from math import *
+
 from utils import *
 from utils_finance import *
 from st_text import *
-from dataclasses import dataclass
-from enum import Enum
+from session_state_keys import Key
 
 st.set_page_config(layout="wide")
 
 SHOW_TEXT = False
 MONTHS = np.arange(360)
-CURRENT_YEAR = 2024
 
 
 @st.cache_data
@@ -29,6 +30,7 @@ def get_region_options():
     return housing_db["region"].unique()
 
 region_options = get_region_options()
+
 
 @dataclass
 class HousingDataLookup:
@@ -49,61 +51,15 @@ def get_associated_data(region):
         row["property_tax_rate"].values[0],
     )
 
-class AutoValueEnum(Enum):
-    def __getattribute__(self, name):
-        value = super().__getattribute__(name)
-        if isinstance(value, Enum):
-            return value.value
-        return value
-
-    
-def unique_string_generator():
-    counter = 0
-    while True:
-        yield f"unique_{counter}"
-        counter += 1
-
-generator = unique_string_generator()
-
-
-class Key(AutoValueEnum):
-
-    # Mortgage
-    region = next(generator)
-    init_home_value = next(generator)
-    down_payment = next(generator)
-    interest_rate = next(generator)
-    yearly_home_value_growth = next(generator)
-    property_tax_rate = next(generator)
-
-    # Other Costs
-    closing_costs_rate = next(generator)
-    pmi_rate = next(generator)
-    insurance_rate = next(generator)
-    init_hoa_fees = next(generator)
-    init_monthly_maintenance = next(generator)
-    inflation_rate = next(generator)
-
-    # Selling
-    realtor_rate = next(generator)
-    sell_closing_costs_rate = next(generator)
-    additional_selling_costs = next(generator)
-    
-    # Investing
-    rent = next(generator)
-    rent_increase = next(generator)
-    stock_growth_rate = next(generator)
-    stock_tax_rate = next(generator)
-
 
 def ssts_rate(key):
     return ssts[key] / 100
 
 
 def initialize_session_state():
-    if 'initialized' not in st.session_state:
+    if 'initialized' not in ssts:
         # app management
-        st.session_state['initialized'] = True
+        ssts['initialized'] = True
 
         # user data
         ssts[Key.region] = region_options[0]
@@ -182,7 +138,7 @@ def populate_columns(values, cols=3):
 
 
 def mortgage_inputs():
-    st.header("Mortgage")
+    st.markdown("### Mortgage Inputs")
     populate_columns([
         lambda: st.selectbox("Region", key=Key.region, options=region_options, on_change=update_region),
         lambda: dollar_input("Home Price", Key.init_home_value),
@@ -196,7 +152,7 @@ def mortgage_inputs():
 
 
 def other_inputs():
-    with st.expander("Expand for More Options", expanded=False):
+    with st.expander("Expand for More Inputs", expanded=False):
         populate_columns([
             lambda: rate_input("Closing Costs", Key.closing_costs_rate),
             lambda: rate_input("PMI Rate", Key.pmi_rate),
@@ -210,25 +166,27 @@ def other_inputs():
 
 
 def selling_inputs():
-    st.header("Home Selling Costs")
-    populate_columns([
-        lambda: rate_input("Realtor Fee", Key.realtor_rate),
-        lambda: rate_input("Selling Closing Costs", Key.sell_closing_costs_rate),
-        lambda: dollar_input("Additional Selling Costs", Key.additional_selling_costs)
-    ], 6)
+    with st.expander("Home Selling Inputs", expanded=False):
+        populate_columns([
+            lambda: rate_input("Realtor Fee", Key.realtor_rate),
+            lambda: rate_input("Selling Closing Costs", Key.sell_closing_costs_rate),
+            lambda: dollar_input("Additional Selling Costs", Key.additional_selling_costs)
+        ], 3)
 
 
 def renting_inputs():
-    st.header("Renting")
-    populate_columns([
-        lambda: dollar_input("Current Monthly Rent", Key.rent),
-        lambda: rate_input("Yearly Rent Increase", Key.rent_increase),
-        lambda: rate_input("Stock Return Rate", Key.stock_growth_rate),
-        lambda: rate_input("Stock Tax Rate", Key.stock_tax_rate)
-    ], 6)
+    with st.expander("Renting Comparison Inputs", expanded=False):
+        populate_columns([
+            lambda: dollar_input("Current Monthly Rent", Key.rent),
+            lambda: rate_input("Yearly Rent Increase", Key.rent_increase),
+            lambda: rate_input("Stock Return Rate", Key.stock_growth_rate)
+        ], 3)
+        populate_columns([
+            lambda: rate_input("Stock Tax Rate", Key.stock_tax_rate)
+        ], 3)
 
 
-def run_simluation():
+def run_simulation():
 
     # set once
     closing_costs = ssts[Key.init_home_value] * ssts_rate(Key.closing_costs_rate)
@@ -322,9 +280,7 @@ def run_simluation():
 COST_COLS = ["interest", "principal", "pmi", "insurance", "property_tax", "hoa", "maintenance"]
 
 
-def get_sim_monthly_df(monthly_df):
-    """Append additional columns to the data frame. Get yearly dataframe summary."""
-
+def post_process_sim_df(monthly_df):
     monthly_df = monthly_df.set_index("index")
 
     # add total and misc columns
@@ -334,11 +290,7 @@ def get_sim_monthly_df(monthly_df):
     monthly_df["misc"] = monthly_df[
         ["pmi", "insurance", "property_tax", "hoa", "maintenance"]
     ].sum(axis=1)
-    return monthly_df
 
-
-def get_sim_yearly_df(monthly_df):
-    # sum and mean for each year
     yearly_df = monthly_df.groupby("year").agg(
         # sum cols
         pmi_sum=("pmi", "sum"),
@@ -372,24 +324,32 @@ def get_sim_yearly_df(monthly_df):
     cumulative_df.columns = [f"cum_{colname}" for colname in cumulative_df.columns]
 
     yearly_df = pd.concat([yearly_df, cumulative_df], axis=1)
-    return yearly_df
 
-
-def add_cip(df):
-    """
-    Your money: equity - (closing costs, interest, misc, realtor fees)
-    """
     realtor_rate = ssts_rate(Key.realtor_rate)
     sell_closing_costs_rate = ssts_rate(Key.sell_closing_costs_rate)
     additional_selling_costs = ssts[Key.additional_selling_costs]
     closing_costs = ssts_rate(Key.closing_costs_rate) * ssts[Key.init_home_value]
 
-    df["equity"] = df["home_value_max"] - df["loan_balance_max"]
-    df["cip_homeownership"] = \
-        (df["equity"] * (1-realtor_rate-sell_closing_costs_rate)) \
-            - closing_costs - df["cum_interest_sum"] - df["cum_misc_sum"] - additional_selling_costs
+    yearly_df["equity"] = yearly_df["home_value_max"] - yearly_df["loan_balance_max"]
+    yearly_df["cip_homeownership"] = \
+        (yearly_df["equity"] * (1-realtor_rate-sell_closing_costs_rate)) \
+            - closing_costs - yearly_df["cum_interest_sum"] - yearly_df["cum_misc_sum"] - additional_selling_costs
     
-    df["cip_renting"] = df["portfolio_max"] * (1-ssts_rate(Key.stock_tax_rate)) - df["cum_rent_sum"]
+    yearly_df["cip_renting"] = yearly_df["portfolio_max"] * (1-ssts_rate(Key.stock_tax_rate)) - yearly_df["cum_rent_sum"]
+    return yearly_df
+
+
+def format_label_string(label):
+    """Format label string for display on plotly chart."""
+    output = label.lower().replace("_", " ")
+    stop_words = ["sum", "mean", "cum"]
+    for word in stop_words:
+        output = output.replace(f" {word}", "")
+    output = output.title()
+    acronyms = ["Pmi", "Hoa"]
+    for acronym in acronyms:
+        output = output.replace(acronym, acronym.upper())
+    return output
 
 
 def format_df_row_values(df, row_num, cols):
@@ -402,7 +362,7 @@ def format_df_row_values(df, row_num, cols):
     """
     row = df.loc[row_num:row_num, cols].T.reset_index().rename(columns={"index": "name", 0: "value"})
     row["formatted_value"] = row["value"].apply(lambda x: format_currency(x))
-    row["name"] = row["name"].apply(lambda x: x.replace("_", " ").title())
+    row["name"] = row["name"].apply(lambda x: format_label_string(x))
     row = row[row["value"] > 0]
     row = row.sort_values(by=["value"], ascending=False)
     return row
@@ -423,28 +383,59 @@ def display_stacked_bar_chart(df, cols, names, title):
     fig = go.Figure()
     
     for col, name in zip(cols, names):
-        fig.add_trace(go.Bar(x=df.index, y=df[col], name=name))
+        fig.add_trace(go.Bar(
+            x=df.index + 1, 
+            y=df[col], 
+            name=name,
+            hoverinfo='y',
+            hovertemplate='$%{y:,.0f}'
+        ))
 
-    fig.update_layout(title=title,
-                      xaxis=get_xaxis(CURRENT_YEAR),
-                      yaxis=get_yaxis(),
-                      barmode='stack',
-                      height=700)
+    fig.update_layout(
+        title=title,
+        xaxis=dict(
+            title='Years',
+        ),
+        yaxis=dict(
+            title='Dollars',
+            tickformat='$,.0f'
+        ),
+        barmode='stack',
+        height=700
+    )
     fig_display(fig)
 
 
 def display_line_chart(df, cols, names, title):
-    """df must have columns: name, value, formatted_value"""
     fig = go.Figure()
-    
-    for col, name in zip(cols, names):
-        fig.add_trace(go.Scatter(x=df.index, y=df[col], mode='lines', name=name))
 
-    fig.update_layout(title=title,
-                      xaxis=get_xaxis(CURRENT_YEAR),
-                      yaxis=get_yaxis(),
-                      barmode='stack',
-                      height=700)
+    for col, name in zip(cols, names):
+        fig.add_trace(go.Scatter(
+            x=df.index + 1, 
+            y=df[col], 
+            mode='lines', 
+            name=name,
+            hoverinfo='y',
+            hovertemplate='$%{y:,.0f}'
+        ))
+
+    # Update layout
+    fig.update_layout(
+        title=title,
+        xaxis=dict(
+            title='Years',
+        ),
+        yaxis=dict(
+            title='Dollars',
+            tickformat='$,.0f'
+        ),
+        barmode='stack',
+        height=700,
+        legend=dict(x=0.1, y=0.95, xanchor='center', yanchor='top', orientation='v'),
+        hovermode='x'
+    )
+
+    # Display the figure
     fig_display(fig)
 
 
@@ -477,59 +468,58 @@ def calculate_summary(yearly_df):
     st.write(padded_dict)
 
 
-def main():
-    initialize_session_state()
-
-    hide_img_fs = '''
+def hide_fullscreen_button():
+    hide_fs = '''
         <style>
         button[title="View fullscreen"]{
             visibility: hidden;}
         </style>
         '''
+    st.markdown(hide_fs, unsafe_allow_html=True)
 
-    st.markdown(hide_img_fs, unsafe_allow_html=True) 
 
-    css = '''
-        <style>
-            [data-testid="ScrollToBottomContainer"] {
-                overflow: hidden;
-            }
-        </style>
-        '''
-    st.markdown(css, unsafe_allow_html=True)
+def drop_sum_zero(df, cols):
+    """Drop columns in cols if the sum of the column is zero."""
+    drop_cols = df[cols].sum() == 0
+    return drop_cols[drop_cols].index
 
-    #st.title("Mortgage Simulator")
 
-    #_, col1, _ = st.columns([2, 3, 2])
-    #with col1:
-    #    get_intro()
+def main():
 
-    sim_df = run_simluation()
-    monthly_df = get_sim_monthly_df(sim_df)
-    yearly_df = get_sim_yearly_df(monthly_df)
-    add_cip(yearly_df)
+    initialize_session_state()
+    hide_fullscreen_button()
+
+    yearly_df = post_process_sim_df(run_simulation())
 
     mean_first_year_cost_cols = [f"{colname}_mean" for colname in COST_COLS]
     first_year_df = format_df_row_values(yearly_df, 0, mean_first_year_cost_cols)
 
-    #with st.container(height=800):
     col1, _, col2 = st.columns([3, .5, 3])
 
     with col1:
         get_intro()
         mortgage_inputs()
         other_inputs()
+        selling_inputs()
+        renting_inputs()
     with col2:
-        mp, mp_ot, summary = st.tabs(["Monthly Payments", "Monthly Payments over Time", "Summary"])
+        mp, mp_ot, summary, renting = st.tabs([
+            "Monthly Payments", "Monthly Payments over Time", "Summary", "Rent Comparison"
+            ])
 
         with mp:
             disaply_pie_chart(first_year_df)
 
         with mp_ot:
+            cols = [f"{x}_mean" for x in COST_COLS]
+            drop_cols = drop_sum_zero(yearly_df, cols)
+            cols = [x for x in cols if x not in drop_cols]
+            names = [format_label_string(x) for x in cols]
+
             display_stacked_bar_chart(
-                yearly_df, 
-                cols=[f"{x}_mean" for x in COST_COLS], 
-                names=COST_COLS,
+                yearly_df,
+                cols=cols, 
+                names=names,
                 title="Monthly Costs"
             )
 
@@ -538,16 +528,10 @@ def main():
             #calculate_summary()
             st.image("https://static.streamlit.io/examples/owl.jpg", width=200, use_column_width=True)
 
-
-    # selling_inputs()
-    # renting_inputs()
-
-    # display_line_chart(
-    #     yearly_df, 
-    #     cols=["cip_homeownership", "cip_renting"], 
-    #     names=["cip_homeownership", "cip_renting"],
-    #     title="Equity - Money Lost"
-    # )
-
-
-main()
+        with renting:
+            display_line_chart(
+                yearly_df, 
+                cols=["cip_homeownership", "cip_renting"], 
+                names=["Own", "Rent"],
+                title="Cumulative Net Cash in Pocket"
+            )
