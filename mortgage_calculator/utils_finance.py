@@ -8,6 +8,12 @@ def get_monthly_payment_amount(loan_amount, interest_rate, years=30):
     return monthly_payment
 
 
+# function that returns total interest paid and total principal paid over the life of the loan
+def get_total_interest_paid(loan_amount, interest_rate, years=30):
+    total_paid = get_monthly_payment_amount(loan_amount, interest_rate, years) * years * 12
+    return total_paid - loan_amount
+
+
 def cancel_pmi_from_equity(home_value, loan_balance):
     """Returns true when equity >= 20% of the home value"""
     equity = home_value - loan_balance

@@ -25,14 +25,18 @@ class Key(AutoValueEnum):
     init_monthly_maintenance = "10"
     inflation_rate = "11"
 
+    # extra mortgage payments
+    extra_monthly_payments = "12"
+    number_of_payments = "13"
+
     # Selling
-    realtor_rate = "12"
-    sell_closing_costs_rate = "13"
-    additional_selling_costs = "14"
+    realtor_rate = "14"
+    sell_closing_costs_rate = "15"
+    additional_selling_costs = "16"
     
     # Investing
-    rent = "15"
-    rent_increase = "16"
-    stock_growth_rate = "17"
-    stock_tax_rate = "18"
+    rent = "17"
+    rent_increase = "18"
+    stock_growth_rate = "19"
+    stock_tax_rate = "20"
 

@@ -22,9 +22,29 @@ Have the first page be tutorial narrative style top to bottom but you can click 
 
 I think median growth in ppsf might be better than median home sale price because it corrects for size of homes
 
+
+Extra payments and house hacking
+
+Extra payments go towards the principle. Could compare this to a standard mortgage calculator to get difference
+
+Does income from house hacking go to the principle or is it just extra cash?
+House hacking rents would have to increase with rental increases.
+
+
 ### Biz notes
+Make a page that asks various questions and shows how the calculator can answer them
+- impact of interest rates
+- Should I make additional payments
+- What matters most
+- Does PMI matter
+- Renting versus Buying
+- How to house hack
+- How to assess a property
+- etc.
 Look into Icanbuy for ad revenue
 Call this a no compromises mortgage calculator. We leave nothing out.
+Reach out to youtubers to see if they want to make a video on it
+Maybe apply to mortgage companies to build finance tools?
 
 ### TODO
 - Summary with numbers at the top
