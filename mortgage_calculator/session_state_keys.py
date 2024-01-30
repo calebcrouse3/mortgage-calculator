@@ -28,11 +28,6 @@ class Key(AutoValueEnum):
     # extra mortgage payments
     extra_monthly_payments = "12"
     number_of_payments = "13"
-
-    # Selling
-    realtor_rate = "14"
-    sell_closing_costs_rate = "15"
-    additional_selling_costs = "16"
     
     # Investing
     rent = "17"
