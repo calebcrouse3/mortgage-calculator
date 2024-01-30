@@ -40,3 +40,7 @@ class Key(AutoValueEnum):
     stock_growth_rate = "19"
     stock_tax_rate = "20"
 
+    # Rental Income
+    rent_income = "21"
+    rent_income_growth = "22"
+

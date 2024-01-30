@@ -237,7 +237,7 @@ def extra_mortgage_payment_inputs():
         ], 2)
 
 
-def renting_inputs():
+def renting_comparison_inputs():
     with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
             lambda: dollar_input("Monthly Rent", Key.rent,
@@ -248,11 +248,27 @@ def renting_inputs():
                 help="""This is the yearly increase in the cost of rent. This value is used to update
                 the monthly rent each year."""
             ),
+        ], 2)
+        populate_columns([
             lambda: rate_input("Stock Return Rate", Key.stock_growth_rate,
                 help="""This is the yearly return rate of the stock market. This value is used to
                 calculate the growth of your portfolio over time."""       
             )
-        ], 3)
+        ], 2)
+
+
+def rent_income_inputs():
+    with st.expander("Rental Income / House Hacking Inputs", expanded=False):
+        populate_columns([
+            lambda: dollar_input("Monthly Rental Income", Key.rent,
+                help="""This is the monthly cost of renting a home. This value is updated each year
+                based on the yearly rent increase rate."""      
+            ),
+            lambda: rate_input("Yearly Rent Increase", Key.rent_increase,
+                help="""This is the yearly increase in the cost of rent. This value is used to update
+                the monthly rent each year."""
+            ),
+        ], 2)
 
 
 def selling_inputs():
@@ -620,6 +636,8 @@ def run_calculator():
         mortgage_inputs()
         other_inputs()
         extra_mortgage_payment_inputs()
+        renting_comparison_inputs()
+        rent_income_inputs()
         #selling_inputs()
 
     with col2:
@@ -779,7 +797,6 @@ def run_calculator():
 
         with tab_rent:
             get_rental_comparison_intro()
-            renting_inputs()
             display_metrics_in_grid(renting_tab_metrics, 3)
 
             cols=["equity_less_costs", "stocks_less_renting"]
