@@ -79,10 +79,6 @@ def initialize_session_state():
         ssts[Key.extra_monthly_payments] = 0
         ssts[Key.number_of_payments] = 0
 
-        ssts[Key.realtor_rate] = 6.0
-        ssts[Key.sell_closing_costs_rate] = 1.0
-        ssts[Key.additional_selling_costs] = 5000
-
         ssts[Key.rent] = 1600
         ssts[Key.rent_increase] = 6.0
         ssts[Key.stock_growth_rate] = 8.0
@@ -271,18 +267,6 @@ def rent_income_inputs():
         ], 2)
 
 
-def selling_inputs():
-    with st.expander("Home Selling Inputs", expanded=False):
-        populate_columns([
-            lambda: rate_input("Realtor Fee", Key.realtor_rate),
-            lambda: rate_input("Selling Closing Costs", Key.sell_closing_costs_rate),
-            lambda: dollar_input("Additional Selling Costs", Key.additional_selling_costs)
-        ], 3)
-        populate_columns([
-            lambda: rate_input("Stock Tax Rate", Key.stock_tax_rate)
-        ], 3)
-
-
 def run_simulation():
     """
     Simulation iterates over months. Each row corresponds to the total costs paid for a particular
@@ -453,31 +437,14 @@ def post_process_sim_df(sim_df):
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
     # Define rates and costs upfront for clarity
-    realtor_rate = ssts_rate(Key.realtor_rate)
-    sell_closing_costs_rate = ssts_rate(Key.sell_closing_costs_rate)
     closing_costs = ssts_rate(Key.closing_costs_rate) * ssts[Key.init_home_value]
-    additional_selling_costs = ssts[Key.additional_selling_costs]
-    stock_tax_rate = ssts_rate(Key.stock_tax_rate)
 
     # Calculate equity
     year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_max"]
 
     # money you pay that doesnt go towards equity
     year_df["home_costs"] = closing_costs + year_df["cum_interest_sum"] + year_df["cum_misc_sum"]
-    #year_df["selling_costs"] = year_df["equity"] * (realtor_rate + sell_closing_costs_rate) + additional_selling_costs
-    year_df["equity_less_costs"] = year_df["equity"] - year_df["home_costs"] #- year_df["selling_costs"]
-
-    # TODO should incorperate selling costs and stock taxes?
-    # TODO maybe have a button that automatically adds stock/home selling costs with no custom inputs?
-    # could there be other exist strategies
-
-    # Calculate cost of selling property (Cost Incurred from Property Sale)
-    # year_df["cip_homeownership"] = year_df["equity_less_costs"] - year_df["home_costs"]
-
-    # Calculate cost of renting (Cost Incurred from Renting)
-    # year_df["cip_renting"] = year_df["portfolio_value_max"] * (1 - stock_tax_rate) - year_df["cum_rent_sum"]
-
-    #year_df["stocks_less_renting"] = year_df["portfolio_value_max"] * (1 - stock_tax_rate) - year_df["cum_rent_sum"]
+    year_df["equity_less_costs"] = year_df["equity"] - year_df["home_costs"]
     year_df["stocks_less_renting"] = year_df["portfolio_value_max"] - year_df["cum_rent_sum"]
 
     return year_df
@@ -636,9 +603,6 @@ def run_calculator():
         mortgage_inputs()
         other_inputs()
         extra_mortgage_payment_inputs()
-        renting_comparison_inputs()
-        rent_income_inputs()
-        #selling_inputs()
 
     with col2:
         tab_mp, tab_mpot, tab_hv, tab_rent, summary = st.tabs([ 
