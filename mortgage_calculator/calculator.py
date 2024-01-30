@@ -17,9 +17,6 @@ from session_state_keys import Key
 
 st.set_page_config(layout="wide")
 
-SHOW_TEXT = False
-
-
 @st.cache_data
 def load_housing_data():
     return pd.read_csv('./mortgage_calculator/data/city_housing_data.csv')
@@ -77,7 +74,7 @@ def initialize_session_state():
         ssts[Key.pmi_rate] = 0.5
         ssts[Key.insurance_rate] = 0.35
         ssts[Key.init_hoa_fees] = 0
-        ssts[Key.init_monthly_maintenance] = 0
+        ssts[Key.init_monthly_maintenance] = 100
         ssts[Key.inflation_rate] = 3.0
         ssts[Key.extra_monthly_payments] = 0
         ssts[Key.number_of_payments] = 0
@@ -86,9 +83,9 @@ def initialize_session_state():
         ssts[Key.sell_closing_costs_rate] = 1.0
         ssts[Key.additional_selling_costs] = 5000
 
-        ssts[Key.rent] = 2000
+        ssts[Key.rent] = 1600
         ssts[Key.rent_increase] = 6.0
-        ssts[Key.stock_growth_rate] = 7.0
+        ssts[Key.stock_growth_rate] = 8.0
         ssts[Key.stock_tax_rate] = 15.0
 
 
@@ -102,7 +99,7 @@ def update_region():
     ssts[Key.property_tax_rate] = housing_data.tax_rate
 
 
-def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asterisk=False):
+def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asterisk=False, help=None):
  
     if asterisk:
         label = ":orange[**]" + label
@@ -112,12 +109,13 @@ def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asteris
         min_value=min_value, 
         max_value=max_value, 
         step=step,
-        key=key
+        key=key,
+        help=help
     )
     return percent
 
 
-def dollar_input(label, key=None, min_value=0, max_value=1e8, step=10, asterisk=False):
+def dollar_input(label, key=None, min_value=0, max_value=1e8, step=10, asterisk=False, help=None):
     """Function that will calculate the step input based on the default value.
     The step is 1eN where N is one less than the number of digits in the default value.
     """
@@ -131,6 +129,7 @@ def dollar_input(label, key=None, min_value=0, max_value=1e8, step=10, asterisk=
         max_value=int(max_value),
         step=step,
         key=key,
+        help=help
     )
 
 
@@ -148,45 +147,111 @@ def populate_columns(values, cols=3):
 def mortgage_inputs():
     st.markdown("### Mortgage Inputs")
     populate_columns([
-        lambda: st.selectbox("Region", key=Key.region, options=region_options, on_change=update_region),
-        lambda: dollar_input("Home Price", Key.init_home_value),
-        lambda: dollar_input("Down Payment", Key.down_payment),
-    ])
+        lambda: st.selectbox("Region", key=Key.region, options=region_options, on_change=update_region, 
+            help="""Select a metro area, city, or zip code to lookup data for this region. Inputs 
+            marked with a double asterisk (**) will be updated based on this selection."""
+        ),
+        lambda: dollar_input("Home Price", Key.init_home_value, 
+            help="The price of the home you are considering purchasing."
+        ),
+    ], 2)
     populate_columns([
-        lambda: rate_input("Interest", Key.interest_rate),
-        lambda: rate_input("Home Value Growth", Key.yearly_home_value_growth, asterisk=True),
-        lambda: rate_input("Property Tax", Key.property_tax_rate, asterisk=True)
-    ])
+        lambda: dollar_input("Down Payment", Key.down_payment, 
+            help="""The amount of cash you have to put towards the upfront costs of buying a home. 
+            Closing costs will be subtracted from this value and the remainder is the effective 
+            down payment."""
+        ),
+        lambda: rate_input("Interest", Key.interest_rate, 
+            help="""The interest rate on your mortgage. Each month, this percentage is multiplied 
+            by the remaining loan balance to calculate the interest payment."""
+        ),
+    ], 2)
+    populate_columns([
+        lambda: rate_input("Home Value Growth", Key.yearly_home_value_growth, asterisk=True, 
+            help="""The yearly increase in the value of your home. As your home increases in value, 
+            you'll have to pay more in property taxes and insurance. This value is updated whenever
+            you select a new region and corresponds to the median yearly home value increase over 
+            the past 10 years in that region"""
+        ),
+        lambda: rate_input("Property Tax", Key.property_tax_rate, asterisk=True, 
+            help="""This is the tax rate on your property. Property tax rates are set by the state 
+            government. This rate is multiplied by the value of the home to get the total taxes paid 
+            each year. This value is updated whenever you select a new region and corresponds to the 
+            median property tax rate in the state in which this region is located."""
+        ),
+    ], 2)
 
 
 def other_inputs():
     with st.expander("Additional Mortgage Inputs", expanded=False):
         populate_columns([
-            lambda: rate_input("Closing Costs", Key.closing_costs_rate),
-            lambda: rate_input("PMI Rate", Key.pmi_rate),
-            lambda: rate_input("Insurance Rate", Key.insurance_rate),
-        ], 3)
+            lambda: rate_input("Closing Costs", Key.closing_costs_rate, 
+                help="""These are the additional upfront cost of buying a home through a lender. 
+                Its often calculated as a percentage of the purchase price of the home. The closing costs
+                will be subracted from your down payment to calculate the effective down payment."""
+                ),
+            lambda: rate_input("PMI Rate", Key.pmi_rate, 
+                help="""PMI is an additional monthly cost that is required if your down payment is less
+                than 20% of the purchase price of the home. This rate is multiplied by the value of the
+                home to get the total PMI paid each year. PMI can be cancelled once you have 20% equity in the home
+                which can occur from paying down the principle or from the value of the home increasing."""
+                ),
+        ], 2)
         populate_columns([
-            lambda: dollar_input("HOA Fees", Key.init_hoa_fees),
-            lambda: dollar_input("Monthly Maintenance", Key.init_monthly_maintenance),
-            lambda: rate_input("Inflation Rate", Key.inflation_rate)
-        ], 3)
+             lambda: rate_input("Insurance Rate", Key.insurance_rate,
+                help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
+                value of the home to get the total insurance paid each year. Insurance rates can vary
+                based on the location of the home and the type of insurance coverage.""",
+            ),  
+            lambda: dollar_input("Monthly Maintenance", Key.init_monthly_maintenance,
+                help="""Owning a home requires maintenance and upkeep. This is the monthly cost of
+                maintaining your home. This value is updated each year based on the inflation rate."""
+            ),     
+        ], 2)
+        populate_columns([
+            lambda: dollar_input("HOA Fees", Key.init_hoa_fees,
+                help="""If your home is part of a homeowners association, you will have to pay monthly
+                HOA fees. This value is updated each year based on the inflation rate."""
+            ),
+            lambda: rate_input("Inflation Rate", Key.inflation_rate,
+                help="""This is the yearly inflation rate which measure how the cost of goods goes 
+                up. This rate is used to update the value of your monthly maintenance and HOA fees 
+                each year."""
+            )
+        ], 2)
 
 
 def extra_mortgage_payment_inputs():
     with st.expander("Extra Monthly Principal Payments", expanded=False):
         populate_columns([
-            lambda: dollar_input("Extra Monthly Payments", Key.extra_monthly_payments),
-            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=Key.number_of_payments),
-        ], 3)
+            lambda: dollar_input("Extra Monthly Payments", Key.extra_monthly_payments,
+            help="""This is the amount of extra money you will pay towards the principle of your loan
+            each month. This can help you pay off your loan faster and reduce the total amount of
+            interest you pay over the life of the loan."""                     
+            ),
+            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=Key.number_of_payments,
+            help="""This is the number of months you will pay extra payments towards the principle of
+            your loan. After this number of months, you will stop paying extra payments and only pay
+            the normal monthly payment."""
+            ),
+        ], 2)
 
 
 def renting_inputs():
     with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
-            lambda: dollar_input("Current Monthly Rent", Key.rent),
-            lambda: rate_input("Yearly Rent Increase", Key.rent_increase),
-            lambda: rate_input("Stock Return Rate", Key.stock_growth_rate)
+            lambda: dollar_input("Monthly Rent", Key.rent,
+                help="""This is the monthly cost of renting a home. This value is updated each year
+                based on the yearly rent increase rate."""      
+            ),
+            lambda: rate_input("Yearly Rent Increase", Key.rent_increase,
+                help="""This is the yearly increase in the cost of rent. This value is used to update
+                the monthly rent each year."""
+            ),
+            lambda: rate_input("Stock Return Rate", Key.stock_growth_rate,
+                help="""This is the yearly return rate of the stock market. This value is used to
+                calculate the growth of your portfolio over time."""       
+            )
         ], 3)
 
 
@@ -295,7 +360,7 @@ def run_simulation():
         maintenance_cost = add_growth(maintenance_cost, ssts_rate(Key.inflation_rate), months=1)
 
         # update monthly payments with inflation TODO keep this? Make Yearly?
-        extra_payment = add_growth(extra_payment, ssts_rate(Key.inflation_rate), months=1)
+        #extra_payment = add_growth(extra_payment, ssts_rate(Key.inflation_rate), months=1)
 
         # update pmi_required, but dont update pmi cost unless its end of year
         true_pmi = get_monthly_pmi(home_value, loan_balance, ssts_rate(Key.pmi_rate), ssts[Key.init_home_value])
@@ -431,7 +496,7 @@ def format_df_row_values(df, row_num, cols):
     return row
 
 
-def summary_metrics(yearly_df):
+def get_metrics(yearly_df):
 
     closing_costs = ssts[Key.init_home_value] * ssts_rate(Key.closing_costs_rate)
     effective_down_payment = max(ssts[Key.down_payment] - closing_costs, 0)
@@ -440,52 +505,60 @@ def summary_metrics(yearly_df):
     # total amount of interest paid with no extra payments
     default_interest_paid = get_total_interest_paid(loan_amount, ssts_rate(Key.interest_rate))
     actual_interest_paid = sum(yearly_df['interest_sum'])
+    
 
-    metrics_col1 = {
+    # find first year where equity minus costs is higher than previous year
+    def year_of_uptrend(values):
+        for i in range(len(values) - 1):
+            if values[i + 1] > values[i]:
+                return i + 1
+        return 30
+            
+
+    def min_crossover(x, y):
+        """Function that tells you at what index x is greater than y"""
+        for i in range(len(x)):
+            if x[i] > y[i]:
+                return i
+        return 30
+    
+
+    def format_values(metrics, exclude_keys=[]):
+        for key in metrics:
+            if key not in exclude_keys:
+                metrics[key] = format_currency(metrics[key])
+
+    home_value_tab_metrics = {
+        "Years until Equity Increase > Costs": int(year_of_uptrend(yearly_df["equity_less_costs"])),
+        "Increased Equity after 5 Years": yearly_df["equity"].iloc[5] -  yearly_df["equity"].iloc[0],
+        "Increased Equity after 30 Years": yearly_df["equity"].iloc[-1] - yearly_df["equity"].iloc[0],
+    }
+
+    renting_tab_metrics = {
+        "Years until Homeownership is Cheaper": min_crossover(yearly_df["equity_less_costs"], yearly_df["stocks_less_renting"]) + 1,
+        "Homeownership upside in 5 Years": yearly_df["equity_less_costs"].iloc[4] - yearly_df["stocks_less_renting"].iloc[4],
+        "Homeownership upside in 10 Years": yearly_df["equity_less_costs"].iloc[9] - yearly_df["stocks_less_renting"].iloc[9],
+    }
+
+    summary_metrics = {
         "Loan Amount": loan_amount,
         "Closing Costs": closing_costs,
         "Effective Down Payments": effective_down_payment,
-        "Monthly Payments": 1,
-    }
-
-    metrics_col2 = {
-        "Mortgage Payments": sum(yearly_df['total_sum']),
+        "Total Paid": sum(yearly_df['total_sum']),
+        "Principal Paid": sum(yearly_df['principal_sum']),
         "Interest Paid": actual_interest_paid,
-        "Interest Default": default_interest_paid,
-        "Interest Saved": max(0, default_interest_paid - actual_interest_paid),
-        "Taxes Paid": sum(yearly_df['property_tax_sum']),  
+        "Taxes Paid": sum(yearly_df['property_tax_sum']),
         "Other Expenses Paid": sum(yearly_df['misc_sum']),
-        "PMI": sum(yearly_df['pmi_sum']),
+        "PMI Paid": sum(yearly_df['pmi_sum']),
+        "Extra Payments": sum(yearly_df['extra_payment_sum']),
+        "Interest Saved": max(0, default_interest_paid - actual_interest_paid),
     }
-    
-    def format_values(metrics):
-        for key in metrics:
-            metrics[key] = format_currency(metrics[key])
 
-    format_values(metrics_col1)
-    format_values(metrics_col2)
+    format_values(summary_metrics)
+    format_values(home_value_tab_metrics, ["Years until Equity Increase > Costs"])
+    format_values(renting_tab_metrics, ["Years until Homeownership is Cheaper"])
 
-    # Using columns to layout the summary values
-    _, col1, col2 = st.columns([1, 2, 2])
-
-    with col1:
-        for key, value in metrics_col1.items():
-            st.metric(label=key, value=value, delta="")
-
-    with col2:
-        for key, value in metrics_col2.items():
-            st.metric(label=key, value=value)
-
-
-
-def hide_fullscreen_button():
-    hide_fs = '''
-        <style>
-        button[title="View fullscreen"]{
-            visibility: hidden;}
-        </style>
-        '''
-    st.markdown(hide_fs, unsafe_allow_html=True)
+    return summary_metrics, home_value_tab_metrics, renting_tab_metrics
 
 
 def get_zero_sum_cols(df, cols):
@@ -493,42 +566,81 @@ def get_zero_sum_cols(df, cols):
     return [col for col in cols if df[col].sum() == 0]
 
 
+def display_metrics_in_grid(metrics, num_columns):
+    """
+    Displays metrics in a grid layout with a specified number of columns.
+
+    :param metrics: A dictionary of metrics where keys are labels and values are the metric values.
+    :param num_columns: The number of columns in each row of the grid.
+    """
+    # Convert the metrics dictionary to a list of (key, value) pairs for easier chunking
+    metrics_items = list(metrics.items())
+    
+    # Calculate the total number of rows needed
+    total_rows = (len(metrics_items) + num_columns - 1) // num_columns
+    
+    for row in range(total_rows):
+        # For each row, get the chunk of metrics to display
+        start_index = row * num_columns
+        end_index = start_index + num_columns
+        metrics_chunk = metrics_items[start_index:end_index]
+
+        # Create a row of columns and display each metric in a column
+        for i, col in enumerate(st.columns(num_columns)):
+            with col:
+                if i < len(metrics_chunk):
+                    key, value = metrics_chunk[i]
+                    st.metric(label=key, value=value, delta="")
+
+
+def local_css(file_name):
+    with open(file_name) as f:
+        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+
+
 def run_calculator():
+    local_css("./mortgage_calculator/style.css")
 
     initialize_session_state()
-    hide_fullscreen_button()
 
     yearly_df = post_process_sim_df(run_simulation())
 
-    col1, _, col2 = st.columns([10, 1, 12])
+    summary_metrics, home_value_tab_metrics, renting_tab_metrics = get_metrics(yearly_df)
+
+
+    _, col1, _ = st.columns([1, 1, 1])
 
     with col1:
         get_intro()
+
+
+    col1, _, col2 = st.columns([6, 1, 12])
+
+    with col1:
         mortgage_inputs()
         other_inputs()
         extra_mortgage_payment_inputs()
-        renting_inputs()
         #selling_inputs()
 
     with col2:
-        tab_mp, tab_mpot, tab_hv, tab_rent, tab_summary = st.tabs([ 
+        tab_mp, tab_mpot, tab_hv, tab_rent, summary = st.tabs([ 
             "Monthly Payments", 
             "Monthly Payments Over Time", 
             "Home Value",
-            "Rent Comparison", 
+            "Rent Comparison",
             "Summary"
         ])
 
         # like the way that principle and interest are blues and everything else stands apart from them
         col_color_map = {
-                "interest_mean":      "#1b9e77",  # Teal Blue
-                "principal_mean":     "#d95f02",  # Orange
-                "property_tax_mean":  "#e6ab02",  # Burnt Yellow
-                "insurance_mean":     "#66a61e",  # Grass Green
-                "hoa_mean":           "#a6761d",  # Dark Brown
-                "maintenance_mean":   "#6666ff",  # Deep Blue
-                "pmi_mean":           "#e7298a",  # Pinkish Red
-                "extra_payment_mean": "#7570b3",  # Purple
+                "interest_mean":      "#0068C9",  # Blue
+                "principal_mean":     "#83C9FF",  # Light Blue
+                "property_tax_mean":  "#FF2A2B",  # Red
+                "insurance_mean":     "#FFABAB",  # Light Red
+                "maintenance_mean":   "#7EEFA1",  # Green
+                "hoa_mean":           "#2AB09D",  # Light Green
+                "pmi_mean":           "#FF8700",  # Organe
+                "extra_payment_mean": "#FFD16A",  # Light Orange
         }
 
 
@@ -536,20 +648,49 @@ def run_calculator():
         #      Pie                                                             #
         ########################################################################
 
-        # TODO use a sunburst that groups the money spent into equity and costs?
-        # use a sunburst for little gaps in the pie chart.
-        # map colors and order correctly
-
         with tab_mp:
-            pie_df = format_df_row_values(yearly_df, 0, col_color_map.keys())
-            sum = format_currency(pie_df["value"].sum())
-            fig = px.pie(pie_df, values='value', names='name', hole=0.7)
+            get_monthly_intro()
+
+            # get first row from yearly df
+            row = yearly_df.loc[0:0, col_color_map.keys()].T.reset_index().rename(columns={"index": "name", 0: "value"})
+
+            # join col color map to get colors on the df
+            row = row.join(pd.DataFrame.from_dict(col_color_map, orient='index', columns=["color"]), on="name")
+
+            # order pie_df by temp_color_map keys
+            row['order'] = row['name'].apply(lambda x: list(col_color_map.keys()).index(x))
+            row = row.sort_values('order').drop('order', axis=1)
+
+            # format dollar values for display values
+            row["formatted_value"] = row["value"].apply(lambda x: format_currency(x))
+            row["name"] = row["name"].apply(lambda x: format_label_string(x))
+            
+            # remove rows with zero values
+            row = row[row["value"] > 0]
+
+            # get sum to display in center of pie
+            sum = format_currency(row["value"].sum())
+            
+            fig = go.Figure(data=[go.Pie(
+                values=row['value'].values, 
+                labels=row['name'].values, 
+                marker_colors=row["color"].values,
+                hole=0.6,
+                direction ='clockwise', 
+                sort=False)])
+
             fig.update_layout(
-                showlegend=False, height=700, width=700,
+                showlegend=False, height=700,
                 annotations=[dict(text=f"Total: {sum}", x=0.5, y=0.5, font_size=50, showarrow=False)],
                 title="Average Monthly Costs in First Year"
             )
-            fig.update_traces(textposition='outside', text=pie_df["formatted_value"], textinfo='label+text')
+            fig.update_traces(
+                textposition='outside', 
+                text=row["formatted_value"], 
+                textinfo='label+text',
+                marker=dict(line=dict(color='#000000', width=2))
+            )
+
             fig_display(fig)
 
 
@@ -558,6 +699,8 @@ def run_calculator():
         ########################################################################
 
         with tab_mpot:
+            get_monthly_over_time_intro()
+
             zero_sum_cols = get_zero_sum_cols(yearly_df, col_color_map.keys())
             col_color_map = {k: v for k, v in col_color_map.items() if k not in zero_sum_cols}
 
@@ -592,19 +735,24 @@ def run_calculator():
         ########################################################################
 
         with tab_hv:
-            cols=["equity", "equity_less_costs", "home_value_max"]
-            names=["Equity", "Equity minus Costs", "Home Value"]
+            get_home_value_intro()
+            display_metrics_in_grid(home_value_tab_metrics, 3)
+
+            cols=["home_value_max", "equity", "equity_less_costs"]
+            names=["Home Value", "Equity", "Equity minus Costs"]
+            colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
 
             fig = go.Figure()
 
-            for col, name in zip(cols, names):
+            for idx, (col, name) in enumerate(zip(cols, names)):
                 fig.add_trace(go.Scatter(
                     x=yearly_df.index + 1, 
                     y=yearly_df[col], 
                     mode='lines', 
                     name=name,
                     hoverinfo='y',
-                    hovertemplate='$%{y:,.0f}'
+                    hovertemplate='$%{y:,.0f}',
+                    line=dict(width=4, color=colors[idx]),  # Use the color corresponding to the current index
                 ))
 
             # Update layout
@@ -618,7 +766,6 @@ def run_calculator():
                     tickformat='$,.0f'
                 ),
                 height=700,
-                #legend=dict(x=0.3, y=0.92, xanchor='center', yanchor='top', orientation='v'),
                 hovermode='x'
             )
 
@@ -631,18 +778,25 @@ def run_calculator():
         ########################################################################
 
         with tab_rent:
+            get_rental_comparison_intro()
+            renting_inputs()
+            display_metrics_in_grid(renting_tab_metrics, 3)
+
             cols=["equity_less_costs", "stocks_less_renting"]
-            names=["Equity - Costs", "Stocks - Renting"]
+            names=["Equity minus Costs", "Stocks minus Renting"]
+            colors = ['#2ca02c', 'red']
+
             fig = go.Figure()
 
-            for col, name in zip(cols, names):
+            for idx, (col, name) in enumerate(zip(cols, names)):
                 fig.add_trace(go.Scatter(
                     x=yearly_df.index + 1, 
                     y=yearly_df[col], 
                     mode='lines', 
                     name=name,
                     hoverinfo='y',
-                    hovertemplate='$%{y:,.0f}'
+                    hovertemplate='$%{y:,.0f}',
+                    line=dict(width=4, color=colors[idx]),  # Use the color corresponding to the current index
                 ))
 
             # Update layout
@@ -656,19 +810,13 @@ def run_calculator():
                     tickformat='$,.0f'
                 ),
                 height=700,
-                #legend=dict(x=0.3, y=0.92, xanchor='center', yanchor='top', orientation='v'),
                 hovermode='x'
             )
 
             # Display the figure
             fig_display(fig)
 
-
-        ########################################################################
-        #      Summary                                                         #
-        ########################################################################
-
-        with tab_summary:
-            summary_metrics(yearly_df)
+        with summary:
+            st.write(pd.DataFrame(summary_metrics, index=[0]).T.rename(columns={0: "Amount"}))
 
 run_calculator()

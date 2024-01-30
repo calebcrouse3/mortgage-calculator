@@ -1,0 +1,42 @@
+button[title="View fullscreen"]{
+    visibility: hidden;
+}
+
+/* div[data-testid="stExpander"] {
+    background-color: rgba(68, 68, 68, 0.334);
+    color: white;
+} */
+
+
+/*
+[data-testid="tooltipHoverTarget"] svg { 
+    fill: white;
+}
+*/
+
+/*
+[data-testid="stMetric"] > div { 
+    width: fit-content; 
+    margin: auto; 
+} 
+
+[data-testid="stMetricr"] label { 
+    width: fit-content; 
+    margin: auto; 
+}
+
+[data-testid="stMarkdownContainer"] { 
+    width: fit-content; 
+    margin: auto; 
+} 
+
+[data-testid="stMarkdownContainer"] label { 
+    width: fit-content; 
+    margin: auto; 
+} 
+
+[data-testid="stMarkdownContainer"] > div { 
+    width: fit-content; 
+    margin: auto; 
+} 
+*/
