@@ -2,6 +2,26 @@ button[title="View fullscreen"]{
     visibility: hidden;
 }
 
+.stTabs [data-baseweb="tab-list"] {
+    gap: 2px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    height: 50px;
+    width: 150px;
+    white-space: wrap;
+    background-color: #262730;
+    border-radius: 8px 8px 8px 8px;
+    gap: 2px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    box-sizing: 100px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #262730;
+}
+
 /* div[data-testid="stExpander"] {
     background-color: rgba(68, 68, 68, 0.334);
     color: white;

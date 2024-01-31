@@ -30,12 +30,12 @@ class Key(AutoValueEnum):
     number_of_payments = "13"
     
     # Investing
-    rent = "17"
-    rent_increase = "18"
-    stock_growth_rate = "19"
-    stock_tax_rate = "20"
+    rent = "14"
+    rent_increase = "15"
+    stock_growth_rate = "16"
+    stock_tax_rate = "17"
 
     # Rental Income
-    rent_income = "21"
-    rent_income_growth = "22"
+    rent_income = "18"
+    rent_income_growth = "19"
 

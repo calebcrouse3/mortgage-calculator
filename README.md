@@ -77,3 +77,7 @@ Maybe apply to mortgage companies to build finance tools?
 # what taxes and fees need to be added to the selling of a home to mirror the taxes applied to stock market profits
 
 # can rent out you house, poket the rent based on current price, and buy another house???
+# update monthly payments with inflation TODO keep this? Make Yearly?
+
+# only wrinkle with cumulative values is that effective down payment is added to first principal payment
+# and closing costs are added to first misc payment

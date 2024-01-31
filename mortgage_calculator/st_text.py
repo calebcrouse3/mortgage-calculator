@@ -10,14 +10,14 @@ def get_intro():
     """)
 
 def get_monthly_intro():
-    with st.expander("Description of this tab", expanded=True):
+    #with st.expander("Description of this tab", expanded=True):
         st.write("""
-        This section displays a breakdown of the monthly costs you can expect in your first year owning the home. This can help provide insight
+        This section displays a breakdown of the :red[average monthly costs you can expect in your first year owning the home]. This can help provide insight
         into how much house you can afford and some of the extra costs not captured by your mortgage payment to your lender.
         """)
 
 def get_monthly_over_time_intro():
-    with st.expander("Description of this tab", expanded=True):
+    #with st.expander("Description of this tab", expanded=True):
         st.markdown("""
         This chart shows your average monthly costs over the course of 30 years. It can provide a window into 
         how the costs of home ownership change over time. Factors like homeowners insurance, maintenance and property taxes will
@@ -27,7 +27,7 @@ def get_monthly_over_time_intro():
         """)
 
 def get_home_value_intro():
-    with st.expander("Description of this tab", expanded=True):
+    #with st.expander("Description of this tab", expanded=True):
         st.markdown("""
         Your home will increase in value over time. Your equity, or the amount of ownership you have in your home, will 
         increase with your payments toward the principle and the increase in value of your home. This chart additionally shows the 
@@ -36,7 +36,7 @@ def get_home_value_intro():
         """)
 
 def get_rental_comparison_intro():
-    with st.expander("Description of this tab", expanded=True):
+    #with st.expander("Description of this tab", expanded=True):
         st.markdown("""
         This chart gives a comparison of renting versus owning. In this scenario, instead of buying a home, you would instead put all the money you had for a down payment 
         into the stock market and rent a home. If the price of your rent is less than the mortgage payment and any additional costs of ownership, any left over funds would also 
