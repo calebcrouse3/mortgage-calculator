@@ -39,3 +39,5 @@ class Key(AutoValueEnum):
     rent_income = "18"
     rent_income_growth = "19"
 
+    hide_text = "20"
+

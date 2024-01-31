@@ -25,9 +25,12 @@ def load_housing_data():
 
 housing_db = load_housing_data()
 
+
+DEFAULT_REGION = """None - See Tooltip"""
+
 @st.cache_data
 def get_region_options():
-    return housing_db["region"].unique()
+    return [DEFAULT_REGION] + list(housing_db["region"].unique())
 
 region_options = get_region_options()
 
@@ -54,18 +57,19 @@ def get_associated_data(region):
 
 def update_region():
     """Unique function for updating region because it has to change other values."""
-    housing_data = get_associated_data(ssts[Key.region])
-    #ssts[Key.init_home_value] = housing_data.med_price
-    ssts[Key.yearly_home_value_growth] = housing_data.med_price_cagr * 100
-    ssts[Key.property_tax_rate] = housing_data.tax_rate
+    if ssts[Key.region] != DEFAULT_REGION:
+        housing_data = get_associated_data(ssts[Key.region])
+        #ssts[Key.init_home_value] = housing_data.med_price
+        ssts[Key.yearly_home_value_growth] = housing_data.med_price_cagr * 100
+        ssts[Key.property_tax_rate] = housing_data.tax_rate
 
 
 def mortgage_inputs():
-    st.markdown("### Mortgage Inputs")
+    st.markdown("### Mortgage")
     populate_columns([
-        lambda: st.selectbox("Region", key=Key.region, options=region_options, on_change=update_region, 
+        lambda: st.selectbox(":orange[Region]", key=Key.region, options=region_options, on_change=update_region, 
             help="""Select a metro area, city, or zip code to lookup data for this region. Inputs 
-            marked with a double asterisk (**) will be updated based on this selection."""
+            marked with a double asterisk :orange[**] will be updated based on this selection."""
         ),
         lambda: dollar_input("Home Price", Key.init_home_value, 
             help="The price of the home you are considering purchasing."
@@ -96,10 +100,22 @@ def mortgage_inputs():
             median property tax rate in the state in which this region is located."""
         ),
     ], 2)
+    populate_columns([
+        lambda: dollar_input("HOA Fees", Key.init_hoa_fees,
+            help="""If your home is part of a homeowners association, you will have to pay monthly
+            HOA fees. This value is updated each year based on the inflation rate."""
+        ),
+            lambda: rate_input("Insurance Rate", Key.insurance_rate,
+            help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
+            value of the home to get the total insurance paid each year. Insurance rates can vary
+            based on the location of the home and the type of insurance coverage.""",
+        ),
+    ], 2)
 
 
 def other_inputs():
-    with st.expander("Additional Mortgage Inputs", expanded=False):
+    with st.expander("Mortgage+", expanded=False):
+        st.write("The defaults here will probably work for most people")
         populate_columns([
             lambda: rate_input("Closing Costs", Key.closing_costs_rate, 
                 help="""These are the additional upfront cost of buying a home through a lender. 
@@ -114,31 +130,21 @@ def other_inputs():
                 ),
         ], 2)
         populate_columns([
-             lambda: rate_input("Insurance Rate", Key.insurance_rate,
-                help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
-                value of the home to get the total insurance paid each year. Insurance rates can vary
-                based on the location of the home and the type of insurance coverage.""",
-            ),  
+            lambda: rate_input("Inflation Rate", Key.inflation_rate,
+                help="""This is the yearly inflation rate which measure how the cost of goods goes 
+                up. This rate is used to update the value of your monthly maintenance and HOA fees 
+                each year."""
+            ),
             lambda: dollar_input("Monthly Maintenance", Key.init_monthly_maintenance,
                 help="""Owning a home requires maintenance and upkeep. This is the monthly cost of
                 maintaining your home. This value is updated each year based on the inflation rate."""
             ),     
         ], 2)
-        populate_columns([
-            lambda: dollar_input("HOA Fees", Key.init_hoa_fees,
-                help="""If your home is part of a homeowners association, you will have to pay monthly
-                HOA fees. This value is updated each year based on the inflation rate."""
-            ),
-            lambda: rate_input("Inflation Rate", Key.inflation_rate,
-                help="""This is the yearly inflation rate which measure how the cost of goods goes 
-                up. This rate is used to update the value of your monthly maintenance and HOA fees 
-                each year."""
-            )
-        ], 2)
 
 
 def extra_mortgage_payment_inputs():
-    with st.expander("Extra Monthly Principal Payments", expanded=False):
+    with st.expander("Extra Payments", expanded=False):
+        st.write("Extra payments can help you pay off your loan faster and reduce the total amount of interest you pay over the life of the loan.")
         populate_columns([
             lambda: dollar_input("Extra Monthly Payments", Key.extra_monthly_payments,
             help="""This is the amount of extra money you will pay towards the principle of your loan
@@ -154,9 +160,28 @@ def extra_mortgage_payment_inputs():
 
 
 def renting_comparison_inputs():
-    with st.expander("Renting Comparison Inputs", expanded=False):
+    #with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
             lambda: dollar_input("Monthly Rent", Key.rent,
+                help="""This is the monthly cost of renting a home. This value is updated each year
+                based on the yearly rent increase rate."""      
+            ),
+            # lambda: rate_input("Yearly Rent Increase", Key.rent_increase,
+            #     help="""This is the yearly increase in the cost of rent. This value is used to update
+            #     the monthly rent each year."""
+            # ),
+            # lambda: rate_input("Stock Return Rate", Key.stock_growth_rate,
+            #     help="""This is the yearly return rate of the stock market. This value is used to
+            #     calculate the growth of your portfolio over time."""       
+            # )
+        ], 3)
+
+
+def rent_income_inputs():
+    with st.expander("Rental Income", expanded=False):
+        st.write("You can rent out all or a portion of your home to offset the cost of homeownership or make some profit.")
+        populate_columns([
+            lambda: dollar_input("Monthly Rental Income", Key.rent_income,
                 help="""This is the monthly cost of renting a home. This value is updated each year
                 based on the yearly rent increase rate."""      
             ),
@@ -165,48 +190,47 @@ def renting_comparison_inputs():
                 the monthly rent each year."""
             ),
         ], 2)
-        populate_columns([
-            lambda: rate_input("Stock Return Rate", Key.stock_growth_rate,
-                help="""This is the yearly return rate of the stock market. This value is used to
-                calculate the growth of your portfolio over time."""       
-            )
-        ], 2)
 
 
-def rent_income_inputs():
-    with st.expander("Rental Income / House Hacking Inputs", expanded=False):
-        populate_columns([
-            lambda: dollar_input("Monthly Rental Income", Key.rent_income,
-                help="""This is the monthly cost of renting a home. This value is updated each year
-                based on the yearly rent increase rate."""      
-            ),
-            lambda: rate_input("Yearly Rent Increase", Key.rent_income_growth,
-                help="""This is the yearly increase in the cost of rent. This value is used to update
-                the monthly rent each year."""
-            ),
-        ], 2)
+def calculate():
+    populate_columns([
+        lambda: st.button("Reset Values", on_click=reset_session_state, help="Reset all inputs to their default values."),
+        lambda: st.button("Calculate", help="Run the simulation with the current inputs."),
+    ], 2)
 
+
+def hide_text_input():
+    populate_columns([
+        lambda: st.checkbox("Hide All Text Blobs", key=Key.hide_text),
+    ], 2)
 
 
 def ssts_rate(key):
     return ssts[key] / 100
 
 
+def reset_session_state():
+    # TODO reset only some values
+    ssts.clear()
+    initialize_session_state()
+
+
 def initialize_session_state():
     if 'initialized' not in ssts:
         # app management
         ssts['initialized'] = True
+        ssts[Key.hide_text] = False
 
         # user data
-        ssts[Key.region] = region_options[0]
-        housing_data = get_associated_data(region_options[0])
+        ssts[Key.region] = DEFAULT_REGION
+        #housing_data = get_associated_data("None")
 
         #ssts[Key.init_home_value] = int(housing_data.med_price)
         ssts[Key.init_home_value] = 300000
         ssts[Key.down_payment] = 50000
         ssts[Key.interest_rate] = 7.0
-        ssts[Key.yearly_home_value_growth] = housing_data.med_price_cagr * 100
-        ssts[Key.property_tax_rate] = housing_data.tax_rate
+        ssts[Key.yearly_home_value_growth] = 3.0
+        ssts[Key.property_tax_rate] = 1.0
 
         ssts[Key.closing_costs_rate] = 3.0
         ssts[Key.pmi_rate] = 0.5
@@ -217,13 +241,12 @@ def initialize_session_state():
         ssts[Key.extra_monthly_payments] = 0
         ssts[Key.number_of_payments] = 0
 
-        ssts[Key.rent] = 1600
-        ssts[Key.rent_increase] = 6.0
+        ssts[Key.rent] = 1400
         ssts[Key.stock_growth_rate] = 8.0
-        ssts[Key.stock_tax_rate] = 15.0
+        #ssts[Key.stock_tax_rate] = 15.0
 
-        ssts[Key.rent_income] = 500
-        ssts[Key.rent_income_growth] = 3.0
+        ssts[Key.rent_income] = 0
+        ssts[Key.rent_increase] = 5.0
 
 
 def run_simulation():
@@ -330,7 +353,7 @@ def run_simulation():
             hoa_cost = add_growth(hoa_cost, ssts_rate(Key.inflation_rate), 12)
             rent_cost = add_growth(rent_cost, ssts_rate(Key.rent_increase), 12)
             pmi_cost = true_pmi
-            rent_income = add_growth(rent_income, ssts_rate(Key.rent_income_growth), 12)
+            rent_income = add_growth(rent_income, ssts_rate(Key.rent_increase), 12)
 
         month_data = {
             "index": month,
@@ -486,21 +509,25 @@ def get_metrics(yearly_df):
     return summary_metrics, home_value_tab_metrics, renting_tab_metrics
 
 
-
 def run_calculator():
     local_css("./mortgage_calculator/style.css")
     initialize_session_state()
+    st.title("Uncompromising Mortgage Calculator")
+    
+    if not ssts[Key.hide_text]:
+        get_intro()
 
     yearly_df = post_process_sim_df(run_simulation())
 
     summary_metrics, home_value_tab_metrics, renting_tab_metrics = get_metrics(yearly_df)
 
     with st.sidebar:
+        calculate()
         mortgage_inputs()
         other_inputs()
         extra_mortgage_payment_inputs()
-        renting_comparison_inputs()
         rent_income_inputs()
+        hide_text_input()
 
     tab_mp, tab_mpot, tab_hv, tab_rent, summary = st.tabs([ 
         "Monthly Payments", 
@@ -527,7 +554,8 @@ def run_calculator():
     ########################################################################
 
     with tab_mp:
-        get_monthly_intro()
+        if not ssts[Key.hide_text]:
+            get_monthly_intro()
 
         # get first row from yearly df
         row = yearly_df.loc[0:0, COLOR_MAP.keys()].T.reset_index().rename(columns={"index": "name", 0: "value"})
@@ -556,68 +584,64 @@ def run_calculator():
         if net_sum < 0:
             inner_pie_values = [1, 0]
 
-        col1, col2 = st.columns([4, 1])
-
-        with col2:
-            st.container(height=100, border=False)
-            with st.container(height=110):
-                st.metric(label="Average Monthly Total", value=formatted_total_sum, delta="")
-            with st.container(height=110):
-                st.metric(label="Adjusted for Rent Income", value=formatted_net_sum, delta="")
-
-        with col1:
-
-            data = []
-            
-            if rental_income_mean > 0:
-                data.append(go.Pie(
-                    values=inner_pie_values, 
-                    labels=["Rental Income", "Net Cost"],
-                    marker_colors=['white', 'rgba(0,0,0,0)'],
-                    hole=0.55,
-                    direction ='clockwise', 
-                    sort=False,
-                    marker=dict(line=dict(color='#000000', width=2)),
-                    )
-                )
-
+        data = []
+        
+        if rental_income_mean > 0:
             data.append(go.Pie(
-                values=row['value'].values, 
-                labels=row['name'].values,
-                marker_colors=row["color"].values,
-                hole=0.6,
+                values=inner_pie_values, 
+                labels=["Rental Income", "Net Cost"],
+                marker_colors=['white', 'rgba(0,0,0,0)'],
+                hole=0.55,
                 direction ='clockwise', 
                 sort=False,
-                textposition='outside',
-                text=row["formatted_value"], 
-                textinfo='label+text',
-                marker=dict(line=dict(color='#000000', width=2))
+                marker=dict(line=dict(color='#000000', width=2)),
+                hoverinfo = 'none'
                 )
             )
-            
-            fig = go.Figure(data=data)
 
-            if rental_income_mean > 0:
-                fig.update_layout(
-                    annotations=[dict(text=f"""Rental Income<br>{format_currency(rental_income_mean)}""", 
-                                x=0.51, 
-                                y=0.74,
-                                ax=0,
-                                ay=40,
-                                showarrow=True, 
-                                arrowhead=0,
-                                arrowcolor="white",
-                                arrowwidth=1.5,
-                                )],
-                )
-
-            fig.update_layout(
-                showlegend=False, height=700,
-                #annotations=[dict(text=f"""Total: {formatted_total_sum}<br>Net: {formatted_net_sum}""", x=0.5, y=0.5, font_size=30, showarrow=False)],
-                title="Average Monthly Costs in First Year"
+        data.append(go.Pie(
+            values=row['value'].values, 
+            labels=row['name'].values,
+            marker_colors=row["color"].values,
+            hole=0.6,
+            direction ='clockwise', 
+            sort=False,
+            textposition='outside',
+            text=row["formatted_value"], 
+            textinfo='label+text',
+            marker=dict(line=dict(color='#000000', width=2)),
+            hoverinfo = 'none'
             )
+        )
+        
+        fig = go.Figure(data=data)
 
-            fig_display(fig)
+        rent_income_annotation = dict(
+            text=f"Rental Income<br>{format_currency(rental_income_mean)}", 
+            x=0.51, y=0.74, ax=0, ay=40,
+            showarrow=False, arrowhead=0,
+            arrowcolor="white",arrowwidth=1.5,
+        )
+
+        totals_text = f"Total: {formatted_total_sum}"
+        if ssts[Key.rent_income] > 0:
+            totals_text = f"<i>Total: {formatted_total_sum}</i><br>Remainder: {formatted_net_sum}"
+
+        totals_annotation = dict(
+            text=totals_text, x=0.5, y=0.5, font_size=30, showarrow=False
+        )
+
+        annotations = [totals_annotation]
+        if ssts[Key.rent_income] > 0:
+            annotations.append(rent_income_annotation)
+
+        fig.update_layout(
+            showlegend=False, height=700,
+            annotations=annotations,
+            title="Average Monthly Costs in First Year"
+        )
+
+        fig_display(fig)
 
 
     ########################################################################
@@ -625,7 +649,8 @@ def run_calculator():
     ########################################################################
 
     with tab_mpot:
-        get_monthly_over_time_intro()
+        if not ssts[Key.hide_text]:
+            get_monthly_over_time_intro()
 
         zero_sum_cols = [k for k in COLOR_MAP.keys() if yearly_df[k].sum() == 0]
         COLOR_MAP = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
@@ -680,12 +705,13 @@ def run_calculator():
     ########################################################################
 
     with tab_hv:
-        get_home_value_intro()
+        if not ssts[Key.hide_text]:
+            get_home_value_intro()
         display_metrics_in_row(home_value_tab_metrics, 3)
 
-        cols=["home_value_max", "equity", "equity_less_costs", "equity_less_costs_hh"]
-        names=["Home Value", "Equity", "Equity minus Costs", "Equity minus Costs (House Hacking)"]
-        colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+        cols=["home_value_max", "equity", "equity_less_costs"]
+        names=["Home Value", "Equity", "Profit"]
+        colors = ['#1f77b4', '#ff7f0e', '#d62728']
 
         fig = go.Figure()
 
@@ -698,6 +724,17 @@ def run_calculator():
                 hoverinfo='y',
                 hovertemplate='$%{y:,.0f}',
                 line=dict(width=4, color=colors[idx]),
+            ))
+
+        if ssts[Key.rent_income] > 0:
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df["equity_less_costs_hh"], 
+                mode='lines', 
+                name="Profit with Rental Income",
+                hoverinfo='y',
+                hovertemplate='$%{y:,.0f}',
+                line=dict(width=4, color="#2ca02c"),
             ))
 
         fig.update_layout(
@@ -716,12 +753,22 @@ def run_calculator():
     ########################################################################
 
     with tab_rent:
-        get_rental_comparison_intro()
+        # TODO two lines for profit and profit with rent?
+    
+        if not ssts[Key.hide_text]:
+            get_rental_comparison_intro(ssts[Key.rent_increase])
+        renting_comparison_inputs()
         display_metrics_in_row(renting_tab_metrics, 3)
 
-        cols=["equity_less_costs", "stocks_less_renting"]
-        names=["Equity minus Costs", "Stocks minus Renting"]
-        colors = ['#2ca02c', 'red']
+        cols=["equity_less_costs_hh", "stocks_less_renting"]
+        names=["Renting and Stock Portfolio"]
+
+        if ssts[Key.rent_income] > 0:
+            names = ["Home Profit with Rental Income"] + names
+        else:
+            names = ["Home Profit"] + names
+
+        colors = ['#2ca02c', 'purple']
 
         fig = go.Figure()
 
