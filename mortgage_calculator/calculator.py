@@ -449,8 +449,6 @@ def get_metrics(yearly_df):
     closing_costs = ssts[Key.init_home_value] * ssts_rate(Key.closing_costs_rate)
     effective_down_payment = max(ssts[Key.down_payment] - closing_costs, 0)
     loan_amount = ssts[Key.init_home_value] - effective_down_payment
-
-    # total amount of interest paid with no extra payments
     default_interest_paid = get_total_interest_paid(loan_amount, ssts_rate(Key.interest_rate))
     actual_interest_paid = sum(yearly_df['interest_sum'])
     
@@ -463,50 +461,48 @@ def get_metrics(yearly_df):
         return 30
             
 
+    # Function that tells you at what index x is greater than y
     def min_crossover(x, y):
-        """Function that tells you at what index x is greater than y"""
         for i in range(len(x)):
             if x[i] > y[i]:
                 return i
         return 30
     
 
-    def format_values(metrics, exclude_keys=[]):
-        for key in metrics:
-            if key not in exclude_keys:
-                metrics[key] = format_currency(metrics[key])
-
-    home_value_tab_metrics = {
-        "Years until Equity Increase > Costs": int(year_of_uptrend(yearly_df["equity_less_costs"])),
-        "Increased Equity 5 Years": yearly_df["equity"].iloc[5] -  yearly_df["equity"].iloc[0],
-        "Increased Equity 30 Years": yearly_df["equity"].iloc[-1] - yearly_df["equity"].iloc[0],
-    }
-
-    renting_tab_metrics = {
-        "Years until Homeownership is Cheaper": min_crossover(yearly_df["equity_less_costs"], yearly_df["stocks_less_renting"]) + 1,
-        "Homeownership upside 5 Years": yearly_df["equity_less_costs"].iloc[4] - yearly_df["stocks_less_renting"].iloc[4],
-        "Homeownership upside 10 Years": yearly_df["equity_less_costs"].iloc[9] - yearly_df["stocks_less_renting"].iloc[9],
-    }
-
+    def year_of_profit(init_equity, profit_col):
+        for i in range(len(profit_col)):
+            if profit_col[i] > init_equity:
+                return i
+        return 30
+    
     summary_metrics = {
-        "Loan Amount": loan_amount,
-        "Closing Costs": closing_costs,
-        "Effective Down Payments": effective_down_payment,
-        "Total Paid": sum(yearly_df['total_sum']),
-        "Principal Paid": sum(yearly_df['principal_sum']),
-        "Interest Paid": actual_interest_paid,
-        "Taxes Paid": sum(yearly_df['property_tax_sum']),
-        "Other Expenses Paid": sum(yearly_df['misc_sum']),
-        "PMI Paid": sum(yearly_df['pmi_sum']),
-        "Extra Payments": sum(yearly_df['extra_payment_sum']),
-        "Interest Saved": max(0, default_interest_paid - actual_interest_paid),
+        "Loan Amount": format_currency(loan_amount),
+        "Closing Costs": format_currency(closing_costs),
+        "Effective Down Payments": format_currency(effective_down_payment),
+        "Total Paid": format_currency(sum(yearly_df['total_sum'])),
+        "Principal Paid": format_currency(sum(yearly_df['principal_sum'])),
+        "Interest Paid": format_currency(actual_interest_paid),
+        "Taxes Paid": format_currency(sum(yearly_df['property_tax_sum'])),
+        "Other Expenses Paid": format_currency(sum(yearly_df['misc_sum'])),
+        "PMI Paid": format_currency(sum(yearly_df['pmi_sum'])),
+        "Extra Payments": format_currency(sum(yearly_df['extra_payment_sum'])),
+        "Interest Saved": format_currency(max(0, default_interest_paid - actual_interest_paid)),
+        "Rental Income": format_currency(sum(yearly_df['rent_income_sum'])),
     }
 
-    format_values(summary_metrics)
-    format_values(home_value_tab_metrics, ["Years until Equity Increase > Costs"])
-    format_values(renting_tab_metrics, ["Years until Homeownership is Cheaper"])
+    home_value_metrics = {
+        "Years until Profitable": "TODO", # int(year_of_uptrend(yearly_df["equity_less_costs_hh"])),
+        "Years until Profitable with Rent": "TODO",
+        "Increased Equity 10 Years": format_currency(yearly_df["equity"].iloc[10] -  yearly_df["equity"].iloc[10]),
+    }
 
-    return summary_metrics, home_value_tab_metrics, renting_tab_metrics
+    renting_metrics = {
+        "Years until Homeownership is Cheaper": min_crossover(yearly_df["equity_less_costs_hh"], yearly_df["stocks_less_renting"]) + 1,
+        "Homeownership upside 5 Years": format_currency(yearly_df["equity_less_costs_hh"].iloc[4] - yearly_df["stocks_less_renting"].iloc[4]),
+        "Homeownership upside 10 Years":format_currency( yearly_df["equity_less_costs_hh"].iloc[9] - yearly_df["stocks_less_renting"].iloc[9]),
+    }
+
+    return summary_metrics, home_value_metrics, renting_metrics
 
 
 def run_calculator():
@@ -519,7 +515,7 @@ def run_calculator():
 
     yearly_df = post_process_sim_df(run_simulation())
 
-    summary_metrics, home_value_tab_metrics, renting_tab_metrics = get_metrics(yearly_df)
+    summary_metrics, home_value_metrics, renting_metrics = get_metrics(yearly_df)
 
     with st.sidebar:
         calculate()
@@ -530,8 +526,8 @@ def run_calculator():
         hide_text_input()
 
     tab_mp, tab_mpot, tab_hv, tab_rent, summary = st.tabs([ 
-        "Monthly Payments", 
-        "Monthly Payments Over Time", 
+        "Monthly Payment", 
+        "Payments Over Time", 
         "Home Value",
         "Rent Comparison",
         "Summary"
@@ -688,12 +684,31 @@ def run_calculator():
                 line=dict(width=4, color='white'),
             ))
 
+        yaxis_annotation = dict(
+            text=f"Average Monthly Cost", 
+            x=0.0, y=1, showarrow=False,
+        )
+            
         fig.update_layout(
             title="Average Monthly Costs Over Time",
-            yaxis=dict(title='Average Monthly Cost', tickformat='$,.0f'),
+            yaxis=dict(title='', tickformat='$,.0f'),
             barmode='stack',
             height=700,
             xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
+            xaxis_title_font=dict(size=15, color='white'),
+            margin=dict(l=200, r=0, t=80, b=0),
+        )
+
+        fig.add_annotation(
+            xref='paper', yref='paper',
+            y=0.5, x=-0.23, # Position of the annotation
+            text="Average<br>Monthly Cost", # Y-axis label text
+            showarrow=False,
+            font=dict(
+                size=15,
+                color="white"
+            ),
+            align="center"
         )
 
         fig.update_xaxes(range=[0, 31])
@@ -707,7 +722,8 @@ def run_calculator():
     with tab_hv:
         if not ssts[Key.hide_text]:
             get_home_value_intro()
-        display_metrics_in_row(home_value_tab_metrics, 3)
+        
+        # st.write(home_value_metrics)
 
         cols=["home_value_max", "equity", "equity_less_costs"]
         names=["Home Value", "Equity", "Profit"]
@@ -757,16 +773,17 @@ def run_calculator():
     
         if not ssts[Key.hide_text]:
             get_rental_comparison_intro(ssts[Key.rent_increase])
+
         renting_comparison_inputs()
-        display_metrics_in_row(renting_tab_metrics, 3)
+        # st.write(renting_metrics)
 
         cols=["equity_less_costs_hh", "stocks_less_renting"]
-        names=["Renting and Stock Portfolio"]
+        names=["Renting and Stocks"]
 
         if ssts[Key.rent_income] > 0:
-            names = ["Home Profit with Rental Income"] + names
+            names = ["Home with Rental Income"] + names
         else:
-            names = ["Home Profit"] + names
+            names = ["Home"] + names
 
         colors = ['#2ca02c', 'purple']
 
@@ -785,7 +802,7 @@ def run_calculator():
 
         # Update layout
         fig.update_layout(
-            title="Renting vs. Homeownership",
+            title="Renting vs. Homeownership Profit",
             xaxis=dict(
                 title='Year',
             ),
@@ -806,6 +823,7 @@ def run_calculator():
     ########################################################################
 
     with summary:
-        st.write(pd.DataFrame(summary_metrics, index=[0]).T.rename(columns={0: "Amount"}))
+        st.write(summary_metrics)
+        #st.write(pd.DataFrame(summary_metrics, index=[0]).T.rename(columns={0: "Amount"}))
 
 run_calculator()

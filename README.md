@@ -5,9 +5,10 @@ A better mortgage calculator
 - Extra Payments Graph
 - Switch to light theme
 - ICB Ads
-- Add reset defaults button for 
 - Fix get_metrics function
 - Revisit Insurance Estimation
+- Not subtracting rental income correctly I dont think.
+- Make chart yaxis horizontal
 - EDA for rental comps home price comparison
 - QA monthly and yearly df for all values
 - Double check that X-axis for graphs correspond to correct data
@@ -22,6 +23,8 @@ A better mortgage calculator
 - Make format of highlights the same as summary for consistency
 - Make a tips sections for navigating the calculator
 - Give leads on each tab of questions this can help answer
+- Use annotations on the charts instead of at the top
+- Hide boarder box on expander and move arrow next to text
 
 ### Tech Notes
 Had to forward from app.mortgage-calculator to load balancer domain in aws console.
