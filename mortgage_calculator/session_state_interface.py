@@ -1,13 +1,11 @@
 import streamlit as st
 
 class StateItem:
-    _instance_counter = 0
 
-    def __init__(self, default, rate=False):
+    def __init__(self, default, key, rate=False):
         self.default = default
         self.rate = rate
-        self.key = str(StateItem._instance_counter)
-        StateItem._instance_counter += 1
+        self.key = key
 
         if self.key not in st.session_state:
             st.session_state[self.key] = default
@@ -20,26 +18,42 @@ class StateItem:
 
 
 class SessionStateInterface:
+
     def __init__(self):
-        self.hide_text = StateItem(False)
-        self.init_home_value = StateItem(300000)
-        self.down_payment = StateItem(50000)
-        self.interest_rate = StateItem(7.0, rate=True)
-        self.yearly_home_value_growth = StateItem(3.0, rate=True)
-        self.property_tax_rate = StateItem(1.0, rate=True)
-        self.closing_costs_rate = StateItem(3.0, rate=True)
-        self.pmi_rate = StateItem(0.5, rate=True)
-        self.insurance_rate = StateItem(0.35, rate=True)
-        self.init_hoa_fees = StateItem(100)
-        self.init_monthly_maintenance = StateItem(100)
-        self.inflation_rate = StateItem(3.0, rate=True)
-        self.extra_monthly_payments = StateItem(200)
-        self.number_of_payments = StateItem(12)
-        self.rent = StateItem(1500)
-        self.stock_growth_rate = StateItem(7.0, rate=True)
-        self.rent_income = StateItem(0)
-        self.rent_increase = StateItem(3.0, rate=True)
-        self.stock_tax_rate = StateItem(15.0, rate=True)
+        self.counter = self.counter_generator()
+
+        def create_item(val, rate=False):
+            # Use next(self.counter) to get the next value from the generator
+            key = f"state_item_{next(self.counter)}"
+            return StateItem(val, key, rate)
+
+        # Define counter_generator as a static method so it can be called without an instance
+        self.hide_text = create_item(False)
+        self.init_home_value = create_item(300000)
+        self.down_payment = create_item(50000)
+        self.interest_rate = create_item(7.0, rate=True)
+        self.yearly_home_value_growth = create_item(3.0, rate=True)
+        self.property_tax_rate = create_item(1.0, rate=True)
+        self.closing_costs_rate = create_item(3.0, rate=True)
+        self.pmi_rate = create_item(0.5, rate=True)
+        self.insurance_rate = create_item(0.35, rate=True)
+        self.init_hoa_fees = create_item(100)
+        self.init_monthly_maintenance = create_item(100)
+        self.inflation_rate = create_item(3.0, rate=True)
+        self.extra_monthly_payments = create_item(200)
+        self.number_of_payments = create_item(12)
+        self.rent = create_item(1500)
+        self.stock_growth_rate = create_item(7.0, rate=True)
+        self.rent_income = create_item(0)
+        self.rent_increase = create_item(3.0, rate=True)
+        self.stock_tax_rate = create_item(15.0, rate=True)
+
+    @staticmethod
+    def counter_generator():
+        counter = 0
+        while True:
+            yield counter
+            counter += 1
 
     def clear(self):
         st.session_state.clear()

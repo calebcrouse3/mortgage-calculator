@@ -9,6 +9,7 @@ from utils import *
 from utils_finance import *
 from st_text import *
 from utils_inputs import *
+
 from session_state_interface import SessionStateInterface
 
 
@@ -19,7 +20,7 @@ ss = SessionStateInterface()
 def mortgage_inputs():
     st.markdown("### Mortgage")
     populate_columns([
-        lambda: dollar_input("Home Price", ss.init_home_value.key, 
+        lambda: dollar_input("Home Price", ss.init_home_value.key,
             help="The price of the home you are considering purchasing."
         ),
     ], 2)
@@ -142,7 +143,7 @@ def rent_income_inputs():
 
 def calculate():
     populate_columns([
-        lambda: st.button("Reset Values", on_click=ss.clear(), help="Reset all inputs to their default values."),
+        lambda: st.button("Reset Values", on_click=ss.clear, help="Reset all inputs to their default values."),
         lambda: st.button("Calculate", help="Run the simulation with the current inputs."),
     ], 2)
 

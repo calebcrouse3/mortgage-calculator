@@ -2,7 +2,7 @@ run:
 	@poetry run streamlit run mortgage_calculator/calculator.py
 
 run-plus:
-	@poetry run streamlit run mortgage_calculator/session_state_plus.py
+	@poetry run streamlit run mortgage_calculator/test_calculator.py
 
 test:
 	@poetry run pytest tests/test_utils_finance.py
