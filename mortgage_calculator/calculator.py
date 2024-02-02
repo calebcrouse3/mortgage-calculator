@@ -17,10 +17,17 @@ st.set_page_config(layout="wide")
 ss = SessionStateInterface()
 
 
+# CONSTANTS
+CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
+EFFECTIVE_DOWN_PAYMENT = max(ss.down_payment.val - CLOSING_COSTS, 0)
+LOAN_AMOUNT = ss.home_price.val - EFFECTIVE_DOWN_PAYMENT
+MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
+
+
 def mortgage_inputs():
     st.markdown("### Mortgage")
     populate_columns([
-        lambda: dollar_input("Home Price", ss.init_home_value.key,
+        lambda: dollar_input("Home Price", ss.home_price.key,
             help="The price of the home you are considering purchasing."
         ),
     ], 2)
@@ -36,13 +43,13 @@ def mortgage_inputs():
         ),
     ], 2)
     populate_columns([
-        lambda: rate_input("Home Value Growth", ss.yearly_home_value_growth.key, asterisk=True, 
+        lambda: rate_input("Home Value Growth", ss.yr_home_appreciation.key, asterisk=False, 
             help="""The yearly increase in the value of your home. As your home increases in value, 
             you'll have to pay more in property taxes and insurance. This value is updated whenever
             you select a new region and corresponds to the median yearly home value increase over 
             the past 10 years in that region"""
         ),
-        lambda: rate_input("Property Tax", ss.property_tax_rate.key, asterisk=True, 
+        lambda: rate_input("Property Tax", ss.yr_property_tax_rate.key, asterisk=False, 
             help="""This is the tax rate on your property. Property tax rates are set by the state 
             government. This rate is multiplied by the value of the home to get the total taxes paid 
             each year. This value is updated whenever you select a new region and corresponds to the 
@@ -50,11 +57,11 @@ def mortgage_inputs():
         ),
     ], 2)
     populate_columns([
-        lambda: dollar_input("HOA Fees", ss.init_hoa_fees.key,
+        lambda: dollar_input("HOA Fees", ss.mo_hoa_fees.key,
             help="""If your home is part of a homeowners association, you will have to pay monthly
             HOA fees. This value is updated each year based on the inflation rate."""
         ),
-            lambda: rate_input("Insurance Rate", ss.insurance_rate.key,
+            lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key,
             help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
             value of the home to get the total insurance paid each year. Insurance rates can vary
             based on the location of the home and the type of insurance coverage.""",
@@ -79,12 +86,12 @@ def other_inputs():
                 ),
         ], 2)
         populate_columns([
-            lambda: rate_input("Inflation Rate", ss.inflation_rate.key,
+            lambda: rate_input("Inflation Rate", ss.yr_inflation_rate.key,
                 help="""This is the yearly inflation rate which measure how the cost of goods goes 
                 up. This rate is used to update the value of your monthly maintenance and HOA fees 
                 each year."""
             ),
-            lambda: dollar_input("Monthly Maintenance", ss.init_monthly_maintenance.key,
+            lambda: dollar_input("Monthly Maintenance", ss.mo_maintenance.key,
                 help="""Owning a home requires maintenance and upkeep. This is the monthly cost of
                 maintaining your home. This value is updated each year based on the inflation rate."""
             ),     
@@ -95,12 +102,12 @@ def extra_mortgage_payment_inputs():
     with st.expander("Extra Payments", expanded=False):
         st.write("Extra payments can help you pay off your loan faster and reduce the total amount of interest you pay over the life of the loan.")
         populate_columns([
-            lambda: dollar_input("Extra Monthly Payments", ss.extra_monthly_payments.key,
+            lambda: dollar_input("Extra Monthly Payments", ss.mo_extra_payment.key,
             help="""This is the amount of extra money you will pay towards the principle of your loan
             each month. This can help you pay off your loan faster and reduce the total amount of
             interest you pay over the life of the loan."""                     
             ),
-            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=ss.number_of_payments.key,
+            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=ss.num_extra_payments.key,
             help="""This is the number of months you will pay extra payments towards the principle of
             your loan. After this number of months, you will stop paying extra payments and only pay
             the normal monthly payment."""
@@ -111,7 +118,7 @@ def extra_mortgage_payment_inputs():
 def renting_comparison_inputs():
     #with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
-            lambda: dollar_input("Monthly Rent", ss.rent.key,
+            lambda: dollar_input("Monthly Rent", ss.mo_rent_cost.key,
                 help="""This is the monthly cost of renting a home. This value is updated each year
                 based on the yearly rent increase rate."""      
             ),
@@ -130,11 +137,11 @@ def rent_income_inputs():
     with st.expander("Rental Income", expanded=False):
         st.write("You can rent out all or a portion of your home to offset the cost of homeownership or make some profit.")
         populate_columns([
-            lambda: dollar_input("Monthly Rental Income", ss.rent_income.key,
+            lambda: dollar_input("Monthly Rental Income", ss.mo_rent_income.key,
                 help="""This is the monthly cost of renting a home. This value is updated each year
                 based on the yearly rent increase rate."""      
             ),
-            lambda: rate_input("Yearly Rent Increase", ss.rent_increase.key,
+            lambda: rate_input("Yearly Rent Increase", ss.yr_rent_increase.key,
                 help="""This is the yearly increase in the cost of rent. This value is used to update
                 the monthly rent each year."""
             ),
@@ -163,37 +170,26 @@ def run_simulation():
     """
 
     ########################################################################
-    #      set once, these dont change throughout the simulation           #
-    ########################################################################
-
-    # TODO, these should be saved at state initialization. Maybe. 
-    # State is closely tied to inputs, not derived values, so maybe not.
-    CLOSING_COSTS = ss.init_home_value.val * ss.closing_costs_rate.val
-    EFFECTIVE_DOWN_PAYMENT = max(ss.down_payment.val - CLOSING_COSTS, 0)
-    LOAN_AMOUNT = ss.init_home_value.val - EFFECTIVE_DOWN_PAYMENT
-    MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
-
-    ########################################################################
     #      initialize, updated yearly                                      #
     ########################################################################
     
-    pmi_cost = get_monthly_pmi(ss.init_home_value.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.init_home_value.val)
-    property_tax_cost = ss.init_home_value.val * ss.property_tax_rate.val / 12
-    insurance_cost = ss.init_home_value.val * ss.insurance_rate.val / 12
-    hoa_cost = ss.init_hoa_fees.val
-    rent_cost = ss.rent.val
+    pmi_cost = get_monthly_pmi(ss.home_price.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.home_price.val)
+    property_tax_cost = ss.home_price.val * ss.yr_property_tax_rate.val / 12
+    insurance_cost = ss.home_price.val * ss.yr_insurance_rate.val / 12
+    hoa_cost = ss.mo_hoa_fees.val
+    rent_cost = ss.mo_rent_cost.val
     portfolio_value = ss.down_payment.val
-    rent_income = ss.rent_income.val
+    rent_income = ss.mo_rent_income.val
 
     ########################################################################
     #      initialize, updated monthly                                     #
     ########################################################################
     
-    maintenance_cost = ss.init_monthly_maintenance.val
+    maintenance_cost = ss.mo_maintenance.val
     loan_balance = LOAN_AMOUNT
-    home_value = ss.init_home_value.val
+    home_value = ss.home_price.val
     pmi_required = pmi_cost > 0
-    extra_payment = ss.extra_monthly_payments.val
+    extra_payment = ss.mo_extra_payment.val
 
 
     data = []
@@ -210,7 +206,7 @@ def run_simulation():
 
         # stop paying extra payments after allotted number of payments
         # cant pay more extra payments than loan balance
-        if month > ss.number_of_payments.val - 1:
+        if month > ss.num_extra_payments.val - 1:
             extra_payment = 0
         elif extra_payment >= loan_balance:
                 extra_payment = loan_balance
@@ -237,29 +233,29 @@ def run_simulation():
         contribution = max(contribution, 0)
         portfolio_value = add_growth(
             portfolio_value, 
-            ss.stock_growth_rate.val, 
+            ss.yr_stock_appreciation.val, 
             months=1, 
             monthly_contribution=contribution
         )
 
         # update home value
-        home_value = add_growth(home_value, ss.yearly_home_value_growth.val, months=1)
+        home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
 
         # update monthly maintenance costs
-        maintenance_cost = add_growth(maintenance_cost, ss.inflation_rate.val, months=1)
+        maintenance_cost = add_growth(maintenance_cost, ss.yr_inflation_rate.val, months=1)
 
         # update pmi_required, but dont update pmi cost unless its end of year
-        true_pmi = get_monthly_pmi(home_value, loan_balance, ss.pmi_rate.val, ss.init_home_value.val)
+        true_pmi = get_monthly_pmi(home_value, loan_balance, ss.pmi_rate.val, ss.home_price.val)
         pmi_required = true_pmi > 0
 
         # update yearly values at end of last month in each year
         if (month + 1) % 12 == 0 and month > 0:
-            property_tax_cost = home_value * ss.property_tax_rate.val / 12
-            insurance_cost = home_value * ss.insurance_rate.val / 12
-            hoa_cost = add_growth(hoa_cost, ss.inflation_rate.val, 12)
-            rent_cost = add_growth(rent_cost, ss.rent_increase.val, 12)
+            property_tax_cost = home_value * ss.yr_property_tax_rate.val / 12
+            insurance_cost = home_value * ss.yr_insurance_rate.val / 12
+            hoa_cost = add_growth(hoa_cost, ss.yr_inflation_rate.val, 12)
+            rent_cost = add_growth(rent_cost, ss.yr_rent_increase.val, 12)
             pmi_cost = true_pmi
-            rent_income = add_growth(rent_income, ss.rent_increase.val, 12)
+            rent_income = add_growth(rent_income, ss.yr_rent_increase.val, 12)
 
         month_data = {
             "index": month,
@@ -335,7 +331,7 @@ def post_process_sim_df(sim_df):
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
     # Define rates and costs upfront for clarity
-    closing_costs = ss.closing_costs_rate.val * ss.init_home_value.val
+    closing_costs = ss.closing_costs_rate.val * ss.home_price.val
 
     # Calculate equity
     year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_max"]
@@ -352,10 +348,7 @@ def post_process_sim_df(sim_df):
 
 def get_metrics(yearly_df):
 
-    closing_costs = ss.init_home_value.val * ss.closing_costs_rate.val
-    effective_down_payment = max(ss.down_payment.val - closing_costs, 0)
-    loan_amount = ss.init_home_value.val - effective_down_payment
-    default_interest_paid = get_total_interest_paid(loan_amount, ss.interest_rate.val)
+    default_interest_paid = get_total_interest_paid(LOAN_AMOUNT, ss.interest_rate.val)
     actual_interest_paid = sum(yearly_df['interest_sum'])
     
 
@@ -382,9 +375,9 @@ def get_metrics(yearly_df):
         return 30
     
     summary_metrics = {
-        "Loan Amount": format_currency(loan_amount),
-        "Closing Costs": format_currency(closing_costs),
-        "Effective Down Payments": format_currency(effective_down_payment),
+        "Loan Amount": format_currency(LOAN_AMOUNT),
+        "Closing Costs": format_currency(CLOSING_COSTS),
+        "Effective Down Payments": format_currency(EFFECTIVE_DOWN_PAYMENT),
         "Total Paid": format_currency(sum(yearly_df['total_sum'])),
         "Principal Paid": format_currency(sum(yearly_df['principal_sum'])),
         "Interest Paid": format_currency(actual_interest_paid),
@@ -526,7 +519,7 @@ def run_calculator():
         )
 
         totals_text = f"Total: {formatted_total_sum}"
-        if ss.rent_income.val > 0:
+        if ss.mo_rent_income.val > 0:
             totals_text = f"<i>Total: {formatted_total_sum}</i><br>Remainder: {formatted_net_sum}"
 
         totals_annotation = dict(
@@ -534,7 +527,7 @@ def run_calculator():
         )
 
         annotations = [totals_annotation]
-        if ss.rent_income.val > 0:
+        if ss.mo_rent_income.val > 0:
             annotations.append(rent_income_annotation)
 
         fig.update_layout(
@@ -568,7 +561,7 @@ def run_calculator():
                 marker_color=color
             ))
             
-        if ss.rent_income.val > 0:
+        if ss.mo_rent_income.val > 0:
             fig.add_trace(go.Scatter(
                 x=yearly_df.index + 1, 
                 y=yearly_df["rent_income_mean"], 
@@ -648,7 +641,7 @@ def run_calculator():
                 line=dict(width=4, color=colors[idx]),
             ))
 
-        if ss.rent_income.val > 0:
+        if ss.mo_rent_income.val > 0:
             fig.add_trace(go.Scatter(
                 x=yearly_df.index + 1, 
                 y=yearly_df["equity_less_costs_hh"], 
@@ -678,7 +671,7 @@ def run_calculator():
         # TODO two lines for profit and profit with rent?
     
         if not ss.hide_text.val:
-            get_rental_comparison_intro(ss.rent_increase.val)
+            get_rental_comparison_intro(ss.yr_rent_increase.val)
 
         renting_comparison_inputs()
         # st.write(renting_metrics)
@@ -686,7 +679,7 @@ def run_calculator():
         cols=["equity_less_costs_hh", "stocks_less_renting"]
         names=["Renting and Stocks"]
 
-        if ss.rent_income.val > 0:
+        if ss.mo_rent_income.val > 0:
             names = ["Home with Rental Income"] + names
         else:
             names = ["Home"] + names

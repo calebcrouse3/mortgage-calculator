@@ -22,31 +22,31 @@ class SessionStateInterface:
     def __init__(self):
         self.counter = self.counter_generator()
 
-        def create_item(val, rate=False):
+        def create(val, rate=False):
             # Use next(self.counter) to get the next value from the generator
             key = f"state_item_{next(self.counter)}"
             return StateItem(val, key, rate)
 
         # Define counter_generator as a static method so it can be called without an instance
-        self.hide_text = create_item(False)
-        self.init_home_value = create_item(300000)
-        self.down_payment = create_item(50000)
-        self.interest_rate = create_item(7.0, rate=True)
-        self.yearly_home_value_growth = create_item(3.0, rate=True)
-        self.property_tax_rate = create_item(1.0, rate=True)
-        self.closing_costs_rate = create_item(3.0, rate=True)
-        self.pmi_rate = create_item(0.5, rate=True)
-        self.insurance_rate = create_item(0.35, rate=True)
-        self.init_hoa_fees = create_item(100)
-        self.init_monthly_maintenance = create_item(100)
-        self.inflation_rate = create_item(3.0, rate=True)
-        self.extra_monthly_payments = create_item(200)
-        self.number_of_payments = create_item(12)
-        self.rent = create_item(1500)
-        self.stock_growth_rate = create_item(7.0, rate=True)
-        self.rent_income = create_item(0)
-        self.rent_increase = create_item(3.0, rate=True)
-        self.stock_tax_rate = create_item(15.0, rate=True)
+        self.hide_text = create(False)
+        self.home_price = create(300000)
+        self.down_payment = create(50000)
+        self.interest_rate = create(7.0, rate=True)
+        self.closing_costs_rate = create(3.0, rate=True)
+        self.pmi_rate = create(0.5, rate=True)
+        self.yr_property_tax_rate = create(1.0, rate=True)
+        self.yr_home_appreciation = create(3.0, rate=True)
+        self.yr_insurance_rate = create(0.35, rate=True)
+        self.mo_hoa_fees = create(100)
+        self.mo_maintenance = create(100)
+        self.yr_inflation_rate = create(3.0, rate=True)
+        self.mo_extra_payment = create(200)
+        self.num_extra_payments = create(12)
+        self.mo_rent_cost = create(1500)
+        self.yr_stock_appreciation = create(7.0, rate=True)
+        self.mo_rent_income = create(0)
+        self.yr_rent_increase = create(3.0, rate=True)
+        self.stock_tax_rate = create(15.0, rate=True)
 
     @staticmethod
     def counter_generator():
