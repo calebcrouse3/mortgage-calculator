@@ -115,24 +115,6 @@ def extra_mortgage_payment_inputs():
         ], 2)
 
 
-def renting_comparison_inputs():
-    #with st.expander("Renting Comparison Inputs", expanded=False):
-        populate_columns([
-            lambda: dollar_input("Monthly Rent", ss.mo_rent_cost.key,
-                help="""This is the monthly cost of renting a home. This value is updated each year
-                based on the yearly rent increase rate."""      
-            ),
-            # lambda: rate_input("Yearly Rent Increase", ss.rent_increase,
-            #     help="""This is the yearly increase in the cost of rent. This value is used to update
-            #     the monthly rent each year."""
-            # ),
-            # lambda: rate_input("Stock Return Rate", ss.stock_growth_rate,
-            #     help="""This is the yearly return rate of the stock market. This value is used to
-            #     calculate the growth of your portfolio over time."""       
-            # )
-        ], 3)
-
-
 def rent_income_inputs():
     with st.expander("Rental Income", expanded=False):
         st.write("You can rent out all or a portion of your home to offset the cost of homeownership or make some profit.")
@@ -177,8 +159,6 @@ def run_simulation():
     property_tax_cost = ss.home_price.val * ss.yr_property_tax_rate.val / 12
     insurance_cost = ss.home_price.val * ss.yr_insurance_rate.val / 12
     hoa_cost = ss.mo_hoa_fees.val
-    rent_cost = ss.mo_rent_cost.val
-    portfolio_value = ss.down_payment.val
     rent_income = ss.mo_rent_income.val
 
     ########################################################################
@@ -189,7 +169,6 @@ def run_simulation():
     loan_balance = LOAN_AMOUNT
     home_value = ss.home_price.val
     pmi_required = pmi_cost > 0
-    extra_payment = ss.mo_extra_payment.val
 
 
     data = []
@@ -197,6 +176,7 @@ def run_simulation():
 
         interest_paid = loan_balance * ss.interest_rate.val / 12
         
+        # if youre paying more principle than scheduled...
         # cant pay more principal than loan balance
         principal_paid = MONTHLY_PAYMENT - interest_paid
         if principal_paid >= loan_balance:
@@ -204,39 +184,27 @@ def run_simulation():
 
         loan_balance -= principal_paid
 
-        # stop paying extra payments after allotted number of payments
-        # cant pay more extra payments than loan balance
-        if month > ss.num_extra_payments.val - 1:
-            extra_payment = 0
-        elif extra_payment >= loan_balance:
-                extra_payment = loan_balance
-
-        loan_balance -= extra_payment
-
         # pay pmi if required
         pmi_paid = 0
         if pmi_required:
             pmi_paid = pmi_cost
 
-        # update portfolio value
-        contribution = (
+
+        # if rent covers all cost, pay extra towards the principle
+        total_expenses = (
             interest_paid +
             principal_paid +
-            extra_payment +
             property_tax_cost +
             insurance_cost +
             hoa_cost +
             maintenance_cost +
             pmi_paid
-        ) - rent_cost
-
-        contribution = max(contribution, 0)
-        portfolio_value = add_growth(
-            portfolio_value, 
-            ss.yr_stock_appreciation.val, 
-            months=1, 
-            monthly_contribution=contribution
         )
+
+        # should additional cash flow pay down loan or flow into stock portfolio?
+        net_expenses = total_expenses - rent_income
+        cash_towards_loan = max(-1*net_expenses, 0)
+        loan_balance -= cash_towards_loan
 
         # update home value
         home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
@@ -253,7 +221,6 @@ def run_simulation():
             property_tax_cost = home_value * ss.yr_property_tax_rate.val / 12
             insurance_cost = home_value * ss.yr_insurance_rate.val / 12
             hoa_cost = add_growth(hoa_cost, ss.yr_inflation_rate.val, 12)
-            rent_cost = add_growth(rent_cost, ss.yr_rent_increase.val, 12)
             pmi_cost = true_pmi
             rent_income = add_growth(rent_income, ss.yr_rent_increase.val, 12)
 
@@ -261,22 +228,20 @@ def run_simulation():
             "index": month,
             "year": month // 12,
             "month": month % 12,
-            # costs and payments
+            # costs, payments, revenue
             "interest": interest_paid,
             "principal": principal_paid,
-            "extra_payment": extra_payment,
             "property_tax": property_tax_cost,
             "insurance": insurance_cost,
             "hoa": hoa_cost,
             "maintenance": maintenance_cost,
             "pmi": pmi_paid,
-            "rent": rent_cost,
+            "rent_income": rent_income,
+            "net_expenses": net_expenses,
+            "cash_towards_loan": cash_towards_loan,
             # balances and values
             "loan_balance": loan_balance,
             "home_value": home_value,
-            "portfolio_value": portfolio_value,
-            # house hacking / rental income
-            "rent_income": rent_income,
         }
         data.append(month_data)
     return pd.DataFrame(data).set_index("index")
@@ -285,8 +250,7 @@ def run_simulation():
 def post_process_sim_df(sim_df):
     """
     After running the simulation, we want to aggregate the data to a yearly level for easier
-    analysis and visualization. This function also calculates some derived metrics related to 
-    renting comparisons and rental income.
+    analysis and visualization. This function also calculates some derived metrics for plotting.
     """
 
     # add total and misc columns
@@ -395,13 +359,7 @@ def get_metrics(yearly_df):
         "Increased Equity 10 Years": format_currency(yearly_df["equity"].iloc[10] -  yearly_df["equity"].iloc[10]),
     }
 
-    renting_metrics = {
-        "Years until Homeownership is Cheaper": min_crossover(yearly_df["equity_less_costs_hh"], yearly_df["stocks_less_renting"]) + 1,
-        "Homeownership upside 5 Years": format_currency(yearly_df["equity_less_costs_hh"].iloc[4] - yearly_df["stocks_less_renting"].iloc[4]),
-        "Homeownership upside 10 Years":format_currency( yearly_df["equity_less_costs_hh"].iloc[9] - yearly_df["stocks_less_renting"].iloc[9]),
-    }
-
-    return summary_metrics, home_value_metrics, renting_metrics
+    return summary_metrics, home_value_metrics
 
 
 def run_calculator():
@@ -414,7 +372,7 @@ def run_calculator():
 
     yearly_df = post_process_sim_df(run_simulation())
 
-    summary_metrics, home_value_metrics, renting_metrics = get_metrics(yearly_df)
+    summary_metrics, home_value_metrics = get_metrics(yearly_df)
 
     with st.sidebar:
         calculate()
@@ -424,11 +382,10 @@ def run_calculator():
         rent_income_inputs()
         hide_text_input()
 
-    tab_mp, tab_mpot, tab_hv, tab_rent, summary = st.tabs([ 
+    tab_mp, tab_mpot, tab_hv, summary = st.tabs([ 
         "Monthly Payment", 
         "Payments Over Time", 
         "Home Value",
-        "Rent Comparison",
         "Summary"
     ])
 
@@ -661,61 +618,6 @@ def run_calculator():
         )
 
         fig_display(fig)
-
-
-    ########################################################################
-    #      Renting                                                         #
-    ########################################################################
-
-    with tab_rent:
-        # TODO two lines for profit and profit with rent?
-    
-        if not ss.hide_text.val:
-            get_rental_comparison_intro(ss.yr_rent_increase.val)
-
-        renting_comparison_inputs()
-        # st.write(renting_metrics)
-
-        cols=["equity_less_costs_hh", "stocks_less_renting"]
-        names=["Renting and Stocks"]
-
-        if ss.mo_rent_income.val > 0:
-            names = ["Home with Rental Income"] + names
-        else:
-            names = ["Home"] + names
-
-        colors = ['#2ca02c', 'purple']
-
-        fig = go.Figure()
-
-        for idx, (col, name) in enumerate(zip(cols, names)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[col], 
-                mode='lines', 
-                name=name,
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                line=dict(width=4, color=colors[idx]),  # Use the color corresponding to the current index
-            ))
-
-        # Update layout
-        fig.update_layout(
-            title="Renting vs. Homeownership Profit",
-            xaxis=dict(
-                title='Year',
-            ),
-            yaxis=dict(
-                title='Value at End of Year',
-                tickformat='$,.0f'
-            ),
-            height=700,
-            hovermode='x'
-        )
-
-        # Display the figure
-        fig_display(fig)
-
 
     ########################################################################
     #      Summary                                                         #
