@@ -1,5 +1,5 @@
 """Financial calculations helper functions"""
-
+# TODO fix
 def get_monthly_payment_amount(loan_amount, interest_rate, years=30):
     monthly_rate = interest_rate / 12
     n_payments = years * 12

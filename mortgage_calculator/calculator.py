@@ -16,124 +16,76 @@ from session_state_interface import SessionStateInterface
 st.set_page_config(layout="wide")
 ss = SessionStateInterface()
 
+# TODO, cache yearly df for user?
 
-# CONSTANTS
 CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
-EFFECTIVE_DOWN_PAYMENT = max(ss.down_payment.val - CLOSING_COSTS, 0)
-LOAN_AMOUNT = ss.home_price.val - EFFECTIVE_DOWN_PAYMENT
+OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
+LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
 MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
+REALTOR_RATE = 0.06
+STOCK_TAX_RATE = 0.15
+STOCK_GROWTH_RATE = 0.07
+INCOME_TAX_RATE = 0.0 #0.25
 
 
 def mortgage_inputs():
-    st.markdown("### Mortgage")
+    st.markdown("### Mortgage / Home")
     populate_columns([
-        lambda: dollar_input("Home Price", ss.home_price.key,
-            help="The price of the home you are considering purchasing."
-        ),
+        lambda: dollar_input("Home Price", ss.home_price.key),
+        lambda: dollar_input("Rehab", ss.rehab.key),
     ], 2)
     populate_columns([
-        lambda: dollar_input("Down Payment", ss.down_payment.key, 
-            help="""The amount of cash you have to put towards the upfront costs of buying a home. 
-            Closing costs will be subtracted from this value and the remainder is the effective 
-            down payment."""
-        ),
-        lambda: rate_input("Interest", ss.interest_rate.key, 
-            help="""The interest rate on your mortgage. Each month, this percentage is multiplied 
-            by the remaining loan balance to calculate the interest payment."""
-        ),
+        lambda: dollar_input("Down Payment", ss.down_payment.key),
+        lambda: rate_input("Interest", ss.interest_rate.key),
     ], 2)
     populate_columns([
-        lambda: rate_input("Home Value Growth", ss.yr_home_appreciation.key, asterisk=False, 
-            help="""The yearly increase in the value of your home. As your home increases in value, 
-            you'll have to pay more in property taxes and insurance. This value is updated whenever
-            you select a new region and corresponds to the median yearly home value increase over 
-            the past 10 years in that region"""
-        ),
-        lambda: rate_input("Property Tax", ss.yr_property_tax_rate.key, asterisk=False, 
-            help="""This is the tax rate on your property. Property tax rates are set by the state 
-            government. This rate is multiplied by the value of the home to get the total taxes paid 
-            each year. This value is updated whenever you select a new region and corresponds to the 
-            median property tax rate in the state in which this region is located."""
-        ),
+        lambda: rate_input("Home Appreciation", ss.yr_home_appreciation.key),
+        lambda: rate_input("Property Tax", ss.yr_property_tax_rate.key),
     ], 2)
     populate_columns([
-        lambda: dollar_input("HOA Fees", ss.mo_hoa_fees.key,
-            help="""If your home is part of a homeowners association, you will have to pay monthly
-            HOA fees. This value is updated each year based on the inflation rate."""
-        ),
-            lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key,
-            help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
-            value of the home to get the total insurance paid each year. Insurance rates can vary
-            based on the location of the home and the type of insurance coverage.""",
-        ),
+        lambda: dollar_input("HOA Fees", ss.mo_hoa_fees.key),
+        lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key),
     ], 2)
-
-
-def other_inputs():
-    with st.expander("Mortgage+", expanded=False):
-        st.write("The defaults here will probably work for most people")
-        populate_columns([
-            lambda: rate_input("Closing Costs", ss.closing_costs_rate.key, 
-                help="""These are the additional upfront cost of buying a home through a lender. 
-                Its often calculated as a percentage of the purchase price of the home. The closing costs
-                will be subracted from your down payment to calculate the effective down payment."""
-                ),
-            lambda: rate_input("PMI Rate", ss.pmi_rate.key, 
-                help="""PMI is an additional monthly cost that is required if your down payment is less
-                than 20% of the purchase price of the home. This rate is multiplied by the value of the
-                home to get the total PMI paid each year. PMI can be cancelled once you have 20% equity in the home
-                which can occur from paying down the principle or from the value of the home increasing."""
-                ),
-        ], 2)
-        populate_columns([
-            lambda: rate_input("Inflation Rate", ss.yr_inflation_rate.key,
-                help="""This is the yearly inflation rate which measure how the cost of goods goes 
-                up. This rate is used to update the value of your monthly maintenance and HOA fees 
-                each year."""
-            ),
-            lambda: dollar_input("Monthly Maintenance", ss.mo_maintenance.key,
-                help="""Owning a home requires maintenance and upkeep. This is the monthly cost of
-                maintaining your home. This value is updated each year based on the inflation rate."""
-            ),     
-        ], 2)
-
-
-def extra_mortgage_payment_inputs():
-    with st.expander("Extra Payments", expanded=False):
-        st.write("Extra payments can help you pay off your loan faster and reduce the total amount of interest you pay over the life of the loan.")
-        populate_columns([
-            lambda: dollar_input("Extra Monthly Payments", ss.mo_extra_payment.key,
-            help="""This is the amount of extra money you will pay towards the principle of your loan
-            each month. This can help you pay off your loan faster and reduce the total amount of
-            interest you pay over the life of the loan."""                     
-            ),
-            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=ss.num_extra_payments.key,
-            help="""This is the number of months you will pay extra payments towards the principle of
-            your loan. After this number of months, you will stop paying extra payments and only pay
-            the normal monthly payment."""
-            ),
-        ], 2)
+    populate_columns([
+        lambda: rate_input("Closing Costs", ss.closing_costs_rate.key),
+        lambda: rate_input("PMI Rate", ss.pmi_rate.key),
+    ], 2)
+    populate_columns([
+        lambda: rate_input("Inflation Rate", ss.yr_inflation_rate.key),
+        lambda: dollar_input("Monthly Maintenance", ss.mo_maintenance.key),     
+    ], 2)
+    populate_columns([
+        lambda: dollar_input("Utilities", ss.mo_utility.key),  
+    ], 2)
 
 
 def rent_income_inputs():
     with st.expander("Rental Income", expanded=False):
-        st.write("You can rent out all or a portion of your home to offset the cost of homeownership or make some profit.")
         populate_columns([
-            lambda: dollar_input("Monthly Rental Income", ss.mo_rent_income.key,
-                help="""This is the monthly cost of renting a home. This value is updated each year
-                based on the yearly rent increase rate."""      
-            ),
-            lambda: rate_input("Yearly Rent Increase", ss.yr_rent_increase.key,
-                help="""This is the yearly increase in the cost of rent. This value is used to update
-                the monthly rent each year."""
-            ),
+            lambda: dollar_input("Monthly Rental Income", ss.mo_rent_income.key),
+            lambda: dollar_input("Monthly Misc Income", ss.mo_other_income.key),
+        ], 2)
+        populate_columns([
+            lambda: rate_input("Yearly Rent Increase", ss.yr_rent_increase.key),
+            lambda: rate_input("Management Fee", ss.management_rate.key),
+        ], 2)
+        populate_columns([
+            lambda: rate_input("Vacancy Rate", ss.vacancy_rate.key),
+            lambda: st.checkbox("Paydown Loan with Profit", key=ss.paydown_with_profit.key),
         ], 2)
 
 
-def calculate():
+def rent_expense_inputs():
+    with st.expander("Rental Expense", expanded=False):
+        populate_columns([
+            lambda: dollar_input("Rent Expense", ss.rent_exp.key),
+        ], 2)
+
+
+def calculate_inputs():
     populate_columns([
-        lambda: st.button("Reset Values", on_click=ss.clear, help="Reset all inputs to their default values."),
-        lambda: st.button("Calculate", help="Run the simulation with the current inputs."),
+        lambda: st.button("Reset Values", on_click=ss.clear),
+        lambda: st.button("Calculate"),
     ], 2)
 
 
@@ -141,7 +93,6 @@ def hide_text_input():
     populate_columns([
         lambda: st.checkbox("Hide All Text Blobs", key=ss.hide_text.key),
     ], 2)
-
 
 
 def run_simulation():
@@ -155,95 +106,141 @@ def run_simulation():
     #      initialize, updated yearly                                      #
     ########################################################################
     
-    pmi_cost = get_monthly_pmi(ss.home_price.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.home_price.val)
-    property_tax_cost = ss.home_price.val * ss.yr_property_tax_rate.val / 12
-    insurance_cost = ss.home_price.val * ss.yr_insurance_rate.val / 12
-    hoa_cost = ss.mo_hoa_fees.val
+    pmi_price = get_monthly_pmi(ss.home_price.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.home_price.val)
+    property_tax_exp = ss.home_price.val * ss.yr_property_tax_rate.val / 12
+    insurance_exp = ss.home_price.val * ss.yr_insurance_rate.val / 12
+    maintenance_exp = ss.mo_maintenance.val
+    hoa_exp = ss.mo_hoa_fees.val
+    utility_exp = ss.mo_utility.val
     rent_income = ss.mo_rent_income.val
+    other_income = ss.mo_other_income.val
+    management_exp = ss.management_rate.val * rent_income
+    rent_exp = ss.rent_exp.val
 
     ########################################################################
     #      initialize, updated monthly                                     #
     ########################################################################
     
-    maintenance_cost = ss.mo_maintenance.val
     loan_balance = LOAN_AMOUNT
     home_value = ss.home_price.val
-    pmi_required = pmi_cost > 0
+    pmi_required = pmi_price > 0
+    stock_value = OOP
 
 
     data = []
     for month in np.arange(12 * 30):
 
-        interest_paid = loan_balance * ss.interest_rate.val / 12
+        interest_exp = loan_balance * ss.interest_rate.val / 12
         
         # if youre paying more principle than scheduled...
         # cant pay more principal than loan balance
-        principal_paid = MONTHLY_PAYMENT - interest_paid
-        if principal_paid >= loan_balance:
-            principal_paid = loan_balance
+        principal_exp = MONTHLY_PAYMENT - interest_exp
+        if principal_exp >= loan_balance:
+            principal_exp = loan_balance
 
-        loan_balance -= principal_paid
+        loan_balance -= principal_exp
 
         # pay pmi if required
-        pmi_paid = 0
+        pmi_exp = 0
         if pmi_required:
-            pmi_paid = pmi_cost
+            pmi_exp = pmi_price
 
 
         # if rent covers all cost, pay extra towards the principle
-        total_expenses = (
-            interest_paid +
-            principal_paid +
-            property_tax_cost +
-            insurance_cost +
-            hoa_cost +
-            maintenance_cost +
-            pmi_paid
+        op_exp = (
+            property_tax_exp +
+            insurance_exp +
+            hoa_exp +
+            maintenance_exp +
+            pmi_exp +
+            utility_exp +
+            management_exp
         )
+        total_exp = op_exp + interest_exp + principal_exp
+        total_income = rent_income + other_income
+        adj_total_income = total_income * (1 - ss.vacancy_rate.val)
+
 
         # should additional cash flow pay down loan or flow into stock portfolio?
-        net_expenses = total_expenses - rent_income
-        cash_towards_loan = max(-1*net_expenses, 0)
-        loan_balance -= cash_towards_loan
+        noi = adj_total_income - op_exp
+        niaf = adj_total_income - total_exp
+
+        # This is the fraction of the principle you have to cover, if income doesnt cover principle.
+        # This value should be subtracted from ROI because you are paying for it, not the tenant.
+        # This is earned equity that isnt a return, its just a payment.
+        principal_makeup = 0
+        if adj_total_income < principal_exp:
+            principal_makeup = principal_exp - adj_total_income
+
+        if niaf > 0:
+            niaf *= (1 - INCOME_TAX_RATE)
+
+        # optionally use niaf to pay down loan
+        if niaf > 0 and ss.paydown_with_profit.val:
+            if niaf > loan_balance:
+                loan_balance = 0
+            else:
+                loan_balance -= niaf
 
         # update home value
         home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
-
-        # update monthly maintenance costs
-        maintenance_cost = add_growth(maintenance_cost, ss.yr_inflation_rate.val, months=1)
 
         # update pmi_required, but dont update pmi cost unless its end of year
         true_pmi = get_monthly_pmi(home_value, loan_balance, ss.pmi_rate.val, ss.home_price.val)
         pmi_required = true_pmi > 0
 
-        # update yearly values at end of last month in each year
-        if (month + 1) % 12 == 0 and month > 0:
-            property_tax_cost = home_value * ss.yr_property_tax_rate.val / 12
-            insurance_cost = home_value * ss.yr_insurance_rate.val / 12
-            hoa_cost = add_growth(hoa_cost, ss.yr_inflation_rate.val, 12)
-            pmi_cost = true_pmi
-            rent_income = add_growth(rent_income, ss.yr_rent_increase.val, 12)
+        # update stock portfolio
+        stock_value = add_growth(stock_value, STOCK_GROWTH_RATE, months=1)
+        if total_exp > rent_exp:
+            stock_value += total_exp - rent_exp
+            stock_contrib = total_exp - rent_exp
+            
 
         month_data = {
             "index": month,
             "year": month // 12,
             "month": month % 12,
-            # costs, payments, revenue
-            "interest": interest_paid,
-            "principal": principal_paid,
-            "property_tax": property_tax_cost,
-            "insurance": insurance_cost,
-            "hoa": hoa_cost,
-            "maintenance": maintenance_cost,
-            "pmi": pmi_paid,
+            # costs, payments, revenue. Totals over the month
+            "interest_exp": interest_exp,
+            "principal_exp": principal_exp,
+            "property_tax_exp": property_tax_exp,
+            "insurance_exp": insurance_exp,
+            "hoa_exp": hoa_exp,
+            "maintenance_exp": maintenance_exp,
+            "pmi_exp": pmi_exp,
+            "utility_exp": utility_exp,
+            "management_exp": management_exp,
+            "op_exp": op_exp,
+            "total_exp": total_exp,
             "rent_income": rent_income,
-            "net_expenses": net_expenses,
-            "cash_towards_loan": cash_towards_loan,
-            # balances and values
+            "other_income": other_income,
+            "total_income": total_income,
+            "principal_makeup": principal_makeup, # need a different name?
+            "adj_total_income": adj_total_income,
+            "noi": noi,
+            "niaf": niaf,
+            "rent_exp": rent_exp,
+            "stock_contrib": stock_contrib,
+            # balances and values. End of month
             "loan_balance": loan_balance,
             "home_value": home_value,
+            "stock_value": stock_value,
         }
         data.append(month_data)
+
+        # update yearly values at end of last month in each year
+        if (month + 1) % 12 == 0 and month > 0:
+            property_tax_exp = home_value * ss.yr_property_tax_rate.val / 12
+            insurance_exp = home_value * ss.yr_insurance_rate.val / 12
+            hoa_exp = add_growth(hoa_exp, ss.yr_inflation_rate.val, 12)
+            utility_exp = add_growth(utility_exp, ss.yr_inflation_rate.val, 12)
+            maintenance_exp = add_growth(maintenance_exp, ss.yr_inflation_rate.val, 12)
+            pmi_price = true_pmi
+            rent_income = add_growth(rent_income, ss.yr_rent_increase.val, 12)
+            other_income = add_growth(other_income, ss.yr_rent_increase.val, 12)
+            management_exp = ss.management_rate.val * rent_income
+            rent_exp = add_growth(rent_exp, ss.yr_rent_increase.val, 12)
+
     return pd.DataFrame(data).set_index("index")
 
 
@@ -253,262 +250,265 @@ def post_process_sim_df(sim_df):
     analysis and visualization. This function also calculates some derived metrics for plotting.
     """
 
-    # add total and misc columns
-    sim_df["total"] = sim_df[[
-        "interest", "principal", "pmi", "insurance", 
-        "property_tax", "hoa", "maintenance", "extra_payment"
-    ]].sum(axis=1)
-
-    sim_df["misc"] = sim_df[[
-        "pmi", "insurance", "property_tax", 
-        "hoa", "maintenance"
-    ]].sum(axis=1)
-
     # List of columns for sum and mean aggregations
     sum_mean_cols = [
-        "pmi", "insurance", "property_tax", "hoa", 
-        "maintenance", "interest", "principal", 
-        "misc", "total", "rent", "extra_payment",
-        "rent_income"
+            "interest_exp",
+            "principal_exp",
+            "property_tax_exp",
+            "insurance_exp",
+            "hoa_exp",
+            "maintenance_exp",
+            "pmi_exp",
+            "utility_exp",
+            "management_exp",
+            "op_exp",
+            "total_exp",
+            "rent_income",
+            "other_income",
+            "total_income",
+            "adj_total_income",
+            "noi",
+            "niaf",
+            "rent_exp",
+            "stock_contrib",
+            "principal_makeup"
     ]
 
-    # Columns for max aggregation
-    max_cols = ["home_value", "loan_balance", "portfolio_value"]
-
-    # Generate aggregation dictionary
     agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
-    agg_dict.update({col: 'max' for col in max_cols})
 
-    # Group and aggregate
+    agg_dict.update({
+        "home_value": 'max', # end of year is max
+        "loan_balance": 'min', # end of year is min
+        "stock_value": 'max'
+    })
+
     year_df = sim_df.groupby("year").agg(agg_dict)
-
-    # Renaming columns for clarity
     year_df.columns = [f"{col}_{func}" for col, func in year_df.columns]
 
-    # total minus rental income
-    year_df["total_mean_hh"] = year_df["total_mean"] - year_df["rent_income_mean"]
+    year_df.rename(columns={
+        "home_value_max": "home_value",
+        "loan_balance_min": "loan_balance",
+        "stock_value_max": "stock_value"
+    }, inplace=True)
 
-    # cumulative cols for principal, interest, total, misc
-    cols_to_cumsum = ["total_sum", "interest_sum", "principal_sum", "extra_payment_sum", "misc_sum", "rent_sum", "rent_income_sum"]
+    def rename_columns(df):
+        # remove sum from columns.
+        # Value is implied total for the year,
+        # mean value is implied for monthly
+        new_columns = {}
+        for col in df.columns:
+            if col.endswith('_sum'):
+                new_columns[col] = col[:-4]
+            elif col.endswith('_mean'):
+                new_columns[col] = col[:-5] + '_mo'
+        df.rename(columns=new_columns, inplace=True)
 
-    for col in cols_to_cumsum:
+    rename_columns(year_df)
+    
+    cumsum_cols = [
+        "niaf",
+        "rent_exp",
+        "principal_exp",
+        "stock_contrib",
+        "principal_makeup"
+    ]
+
+    for col in cumsum_cols:
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
-    # Define rates and costs upfront for clarity
-    closing_costs = ss.closing_costs_rate.val * ss.home_price.val
+    # TODO. Selling tax, realtor fees, other sellings fees are an optional addition?
 
-    # Calculate equity
-    year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_max"]
+    # calculating "effective" equity by factoring in the price of selling the home.
+    # are there other exit strategies that should be considered?
+    year_df["equity"] = year_df["home_value"] - year_df["loan_balance"] #- (year_df["home_value"] * REALTOR_RATE)
+    # total return exludes the down payment, and any makeup to cover the principle. These is not a 
+    # gain because they are not paid by the tenant
+    year_df["total_return"] = year_df["equity"] + year_df["cum_niaf"] - ss.down_payment.val - year_df["cum_principal_makeup"]
+    year_df["coc_roi"] = year_df["cum_niaf"] / OOP
+    year_df["roi"] = year_df["total_return"] / OOP
+    # analogously, rent total return excludes the OOP and additional contributions.
+    # i.e. these things are not a "gain" in the same way that the down payment is not a gain.
+    # additionally, remove taxes paid when cashing out the stock portfolio.
+    year_df["total_return_rent"] = (
+        (year_df["stock_value"] * (1 - STOCK_TAX_RATE)) 
+        - year_df["cum_rent_exp"]
+        - year_df["cum_stock_contrib"]
+        - OOP
+    )
+    year_df["roi_rent"] = year_df["total_return_rent"] / OOP
 
-    # money you pay that doesnt go towards equity
-    year_df["home_costs"] = closing_costs + year_df["cum_interest_sum"] + year_df["cum_misc_sum"]
-    year_df["equity_less_costs"] = year_df["equity"] - year_df["home_costs"]
-    year_df["equity_less_costs_hh"] = year_df["equity"] - year_df["home_costs"] +  year_df["cum_rent_income_sum"]
-    year_df["stocks_less_renting"] = year_df["portfolio_value_max"] - year_df["cum_rent_sum"]
+
+    # TODO show tooltip that gives the numbers going into the ROI for each bullet point
 
     return year_df
-
-
-
-def get_metrics(yearly_df):
-
-    default_interest_paid = get_total_interest_paid(LOAN_AMOUNT, ss.interest_rate.val)
-    actual_interest_paid = sum(yearly_df['interest_sum'])
-    
-
-    # find first year where equity minus costs is higher than previous year
-    def year_of_uptrend(values):
-        for i in range(len(values) - 1):
-            if values[i + 1] > values[i]:
-                return i + 1
-        return 30
-            
-
-    # Function that tells you at what index x is greater than y
-    def min_crossover(x, y):
-        for i in range(len(x)):
-            if x[i] > y[i]:
-                return i
-        return 30
-    
-
-    def year_of_profit(init_equity, profit_col):
-        for i in range(len(profit_col)):
-            if profit_col[i] > init_equity:
-                return i
-        return 30
-    
-    summary_metrics = {
-        "Loan Amount": format_currency(LOAN_AMOUNT),
-        "Closing Costs": format_currency(CLOSING_COSTS),
-        "Effective Down Payments": format_currency(EFFECTIVE_DOWN_PAYMENT),
-        "Total Paid": format_currency(sum(yearly_df['total_sum'])),
-        "Principal Paid": format_currency(sum(yearly_df['principal_sum'])),
-        "Interest Paid": format_currency(actual_interest_paid),
-        "Taxes Paid": format_currency(sum(yearly_df['property_tax_sum'])),
-        "Other Expenses Paid": format_currency(sum(yearly_df['misc_sum'])),
-        "PMI Paid": format_currency(sum(yearly_df['pmi_sum'])),
-        "Extra Payments": format_currency(sum(yearly_df['extra_payment_sum'])),
-        "Interest Saved": format_currency(max(0, default_interest_paid - actual_interest_paid)),
-        "Rental Income": format_currency(sum(yearly_df['rent_income_sum'])),
-    }
-
-    home_value_metrics = {
-        "Years until Profitable": "TODO", # int(year_of_uptrend(yearly_df["equity_less_costs_hh"])),
-        "Years until Profitable with Rent": "TODO",
-        "Increased Equity 10 Years": format_currency(yearly_df["equity"].iloc[10] -  yearly_df["equity"].iloc[10]),
-    }
-
-    return summary_metrics, home_value_metrics
 
 
 def run_calculator():
     local_css("./mortgage_calculator/style.css")
 
     st.title("Uncompromising Mortgage Calculator")
-
-    if not ss.hide_text.val:
-        get_intro()
+    
+    with st.sidebar:
+        calculate_inputs()
+        mortgage_inputs()
+        rent_income_inputs()
+        rent_expense_inputs()
+        hide_text_input()
 
     yearly_df = post_process_sim_df(run_simulation())
 
-    summary_metrics, home_value_metrics = get_metrics(yearly_df)
+    # print some cols from yearly df to audit the results
+    #st.write(list(yearly_df.columns))
 
-    with st.sidebar:
-        calculate()
-        mortgage_inputs()
-        other_inputs()
-        extra_mortgage_payment_inputs()
-        rent_income_inputs()
-        hide_text_input()
+    audit_cols = [
+        "interest_exp",
+        #"interest_exp_mo",
+        "principal_exp",
+        #"principal_exp_mo",
+        #"property_tax_exp",
+        #"property_tax_exp_mo",
+        #"insurance_exp",
+        #"insurance_exp_mo",
+        #"hoa_exp",
+        #"hoa_exp_mo",
+        #"maintenance_exp",
+        #"maintenance_exp_mo",
+        #"pmi_exp",
+        #"pmi_exp_mo",
+        #"utility_exp",
+        #"utility_exp_mo",
+        #"management_exp",
+        #"management_exp_mo",
+        "op_exp",
+        #"op_exp_mo",
+        "total_exp",
+        #"total_exp_mo",
+        #"rent_income",
+        #"rent_income_mo",
+        #"other_income",
+        #"other_income_mo",
+        #"total_income",
+        #"total_income_mo",
+        "adj_total_income",
+        #"adj_total_income_mo",
+        #"noi",
+        #"noi_mo",
+        "niaf",
+        #"niaf_mo",
+        "rent_exp",
+        #"rent_exp_mo",
+        "stock_contrib",
+        #"stock_contrib_mo",
+        "principal_makeup",
+        #"principal_makeup_mo",
+        "home_value",
+        "loan_balance",
+        "stock_value",
+        "cum_niaf",
+        #"cum_rent_exp",
+        "cum_principal_exp",
+        "cum_stock_contrib",
+        "cum_principal_makeup",
+        "equity",
+        "total_return",
+        "coc_roi",
+        "roi",
+        "total_return_rent",
+        #"roi_rent"
+    ]
+    
+    st.write(yearly_df[audit_cols])
 
-    tab_mp, tab_mpot, tab_hv, summary = st.tabs([ 
-        "Monthly Payment", 
-        "Payments Over Time", 
+
+    (
+        tab_exp, 
+        tab_exp_over_time, 
+        tab_home_value, 
+        tab_roi,
+        tab_return,
+        tab_net_income,
+        tab_rent_vs_own_roi,
+        tab_remt_vs_own_return
+    ) = st.tabs([ 
+        "Expenses First Year", 
+        "Expenses Over Time", 
         "Home Value",
-        "Summary"
+        "ROI",
+        "Returns",
+        "Net Income",
+        "Rent vs Own (ROI)",
+        "Rent vs Own (Return)"
     ])
 
     COLOR_MAP = {
-            "interest_mean":      "#0068C9",  # Blue
-            "principal_mean":     "#83C9FF",  # Light Blue
-            "property_tax_mean":  "#FF2A2B",  # Red
-            "insurance_mean":     "#FFABAB",  # Light Red
-            "maintenance_mean":   "#7EEFA1",  # Green
-            "hoa_mean":           "#2AB09D",  # Light Green
-            "pmi_mean":           "#FF8700",  # Organe
-            "extra_payment_mean": "#FFD16A",  # Light Orange
+        "interest_exp_mo":      "#0068C9",  # Blue
+        "principal_exp_mo":     "#83C9FF",  # Light Blue
+        "property_tax_exp_mo":  "#FF2A2B",  # Red
+        "insurance_exp_mo":     "#FFABAB",  # Light Red
+        "hoa_exp_mo":           "#2AB09D",  # Light Green
+        "maintenance_exp_mo":   "#7EEFA1",  # Green
+        "utility_exp_mo":       "#FF8700",  # Organe
+        "management_exp_mo":    "#FFD16A",  # Light Orange
+        "pmi_exp_mo":           "#9030A1",  # Purple
     }
 
-
     ########################################################################
-    #      Pie                                                             #
+    #      Expenses First Year (Pie)                                       #
     ########################################################################
 
-    with tab_mp:
-        if not ss.hide_text.val:
-            get_monthly_intro()
+    with tab_exp:
+        df = yearly_df.loc[0:0, list(COLOR_MAP.keys())]
+        df = df.T.reset_index().rename(columns={"index": "name", 0: "value"})
+        df = df.join(pd.DataFrame.from_dict(COLOR_MAP, orient='index', columns=["color"]), on="name")
+        df['order'] = df['name'].apply(lambda x: list(COLOR_MAP.keys()).index(x))
+        df = df.sort_values('order').drop('order', axis=1)
+        df["formatted_value"] = df["value"].apply(lambda x: format_currency(x))
+        df["name"] = df["name"].apply(lambda x: format_label_string(x))
+        df = df[df["value"] > 0]
 
-        # get first row from yearly df
-        row = yearly_df.loc[0:0, COLOR_MAP.keys()].T.reset_index().rename(columns={"index": "name", 0: "value"})
+        total = format_currency(df["value"].sum())
 
-        # join col color map to get colors on the df
-        row = row.join(pd.DataFrame.from_dict(COLOR_MAP, orient='index', columns=["color"]), on="name")
+        fig = go.Figure()
 
-        # order pie_df by temp_color_map keys
-        row['order'] = row['name'].apply(lambda x: list(COLOR_MAP.keys()).index(x))
-        row = row.sort_values('order').drop('order', axis=1)
-
-        # format dollar values for display values
-        row["formatted_value"] = row["value"].apply(lambda x: format_currency(x))
-        row["name"] = row["name"].apply(lambda x: format_label_string(x))
-        
-        # remove rows with zero values
-        row = row[row["value"] > 0]
-
-        rental_income_mean = yearly_df.loc[0:0, "rent_income_mean"].values[0]
-        total_sum = row["value"].sum()
-        net_sum = total_sum-rental_income_mean
-        formatted_total_sum = format_currency(total_sum)
-        formatted_net_sum = format_currency(net_sum)
-
-        inner_pie_values = [rental_income_mean, net_sum]
-        if net_sum < 0:
-            inner_pie_values = [1, 0]
-
-        data = []
-        
-        if rental_income_mean > 0:
-            data.append(go.Pie(
-                values=inner_pie_values, 
-                labels=["Rental Income", "Net Cost"],
-                marker_colors=['white', 'rgba(0,0,0,0)'],
-                hole=0.55,
-                direction ='clockwise', 
-                sort=False,
-                marker=dict(line=dict(color='#000000', width=2)),
-                hoverinfo = 'none'
-                )
-            )
-
-        data.append(go.Pie(
-            values=row['value'].values, 
-            labels=row['name'].values,
-            marker_colors=row["color"].values,
+        fig.add_trace(go.Pie(
+            values=df['value'].values, 
+            labels=df['name'].values,
+            marker_colors=df["color"].values,
             hole=0.6,
             direction ='clockwise', 
             sort=False,
             textposition='outside',
-            text=row["formatted_value"], 
+            text=df["formatted_value"], 
             textinfo='label+text',
             marker=dict(line=dict(color='#000000', width=2)),
             hoverinfo = 'none'
-            )
-        )
+        ))
         
-        fig = go.Figure(data=data)
 
-        rent_income_annotation = dict(
-            text=f"Rental Income<br>{format_currency(rental_income_mean)}", 
-            x=0.51, y=0.74, ax=0, ay=40,
-            showarrow=False, arrowhead=0,
-            arrowcolor="white",arrowwidth=1.5,
-        )
-
-        totals_text = f"Total: {formatted_total_sum}"
-        if ss.mo_rent_income.val > 0:
-            totals_text = f"<i>Total: {formatted_total_sum}</i><br>Remainder: {formatted_net_sum}"
-
-        totals_annotation = dict(
-            text=totals_text, x=0.5, y=0.5, font_size=30, showarrow=False
-        )
-
-        annotations = [totals_annotation]
-        if ss.mo_rent_income.val > 0:
-            annotations.append(rent_income_annotation)
+        fig.add_annotation(dict(
+            text=f"Total: {total}", 
+            x=0.5, y=0.5, font_size=30, showarrow=False
+        ))
 
         fig.update_layout(
+            title="Average Monthly Costs in First Year",
             showlegend=False, height=700,
-            annotations=annotations,
-            title="Average Monthly Costs in First Year"
         )
 
         fig_display(fig)
 
 
     ########################################################################
-    #      Stacked Bar                                                     #
+    #      Expenses Over Time - Stacked Bar                                #
     ########################################################################
 
-    with tab_mpot:
-        if not ss.hide_text.val:
-            get_monthly_over_time_intro()
-
+    with tab_exp_over_time:
         zero_sum_cols = [k for k in COLOR_MAP.keys() if yearly_df[k].sum() == 0]
-        COLOR_MAP = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
+        color_map_redux = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
 
         fig = go.Figure()
-        for col, color in COLOR_MAP.items():
+
+        for col, color in color_map_redux.items():
             fig.add_trace(go.Bar(
                 x=yearly_df.index + 1, 
                 y=yearly_df[col], 
@@ -517,54 +517,24 @@ def run_calculator():
                 hovertemplate='$%{y:,.0f}',
                 marker_color=color
             ))
-            
+
         if ss.mo_rent_income.val > 0:
             fig.add_trace(go.Scatter(
                 x=yearly_df.index + 1, 
-                y=yearly_df["rent_income_mean"], 
+                y=yearly_df["adj_total_income_mo"], 
                 mode='markers',
-                #mode='lines',
-                name="Rental Income",
+                name="Adj Total Income",
                 hoverinfo='y',
                 hovertemplate='$%{y:,.0f}',
                 marker=dict(size=10, color='white'),
             ))
-
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df["total_mean_hh"], 
-                mode='lines',
-                name="Total Cost after Rental Income",
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                line=dict(width=4, color='white'),
-            ))
-
-        yaxis_annotation = dict(
-            text=f"Average Monthly Cost", 
-            x=0.0, y=1, showarrow=False,
-        )
             
         fig.update_layout(
             title="Average Monthly Costs Over Time",
-            yaxis=dict(title='', tickformat='$,.0f'),
+            yaxis=dict(title='Average Monthly Cost', tickformat='$,.0f'),
             barmode='stack',
             height=700,
             xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
-            xaxis_title_font=dict(size=15, color='white'),
-            margin=dict(l=200, r=0, t=80, b=0),
-        )
-
-        fig.add_annotation(
-            xref='paper', yref='paper',
-            y=0.5, x=-0.23, # Position of the annotation
-            text="Average<br>Monthly Cost", # Y-axis label text
-            showarrow=False,
-            font=dict(
-                size=15,
-                color="white"
-            ),
-            align="center"
         )
 
         fig.update_xaxes(range=[0, 31])
@@ -572,41 +542,25 @@ def run_calculator():
 
 
     ########################################################################
-    #      Home Value                                                      #
+    #      Home Value - Lines                                              #
     ########################################################################
 
-    with tab_hv:
-        if not ss.hide_text.val:
-            get_home_value_intro()
-        
-        # st.write(home_value_metrics)
-
-        cols=["home_value_max", "equity", "equity_less_costs"]
-        names=["Home Value", "Equity", "Profit"]
+    with tab_home_value:
+        cols = ["home_value", "equity"]
+        names= ["Home Value", "Equity"]
         colors = ['#1f77b4', '#ff7f0e', '#d62728']
 
         fig = go.Figure()
-
-        for idx, (col, name) in enumerate(zip(cols, names)):
+    
+        for i in range(len(cols)):
             fig.add_trace(go.Scatter(
                 x=yearly_df.index + 1, 
-                y=yearly_df[col], 
+                y=yearly_df[cols[i]], 
                 mode='lines', 
-                name=name,
+                name=names[i],
                 hoverinfo='y',
                 hovertemplate='$%{y:,.0f}',
-                line=dict(width=4, color=colors[idx]),
-            ))
-
-        if ss.mo_rent_income.val > 0:
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df["equity_less_costs_hh"], 
-                mode='lines', 
-                name="Profit with Rental Income",
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                line=dict(width=4, color="#2ca02c"),
+                line=dict(width=4, color=colors[i]),
             ))
 
         fig.update_layout(
@@ -619,12 +573,170 @@ def run_calculator():
 
         fig_display(fig)
 
+
     ########################################################################
-    #      Summary                                                         #
+    #      ROI - Dots                                                      #
     ########################################################################
 
-    with summary:
-        st.write(summary_metrics)
-        #st.write(pd.DataFrame(summary_metrics, index=[0]).T.rename(columns={0: "Amount"}))
+    with tab_roi:
+        # add ROE?
+        cols = ["roi", "coc_roi"] 
+        names= ["ROI", "COC ROI"]
+        colors = ['#1f77b4', '#ff7f0e']
+
+        fig = go.Figure()
+
+        for i in range(len(cols)):
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df[cols[i]], 
+                mode='markers', 
+                name=names[i],
+                hoverinfo='y',
+                #hovertemplate='$%{y:,.0f}',
+                marker=dict(size=10, color=colors[i]),
+            ))
+
+        fig.update_layout(
+            title="ROI Over Time",
+            xaxis=dict(title='Year',),
+            #yaxis=dict(title='Precent', tickformat='%,.0f'),
+            height=700,
+            hovermode='x'
+        )
+
+        fig_display(fig)
+
+
+    ########################################################################
+    #      Return - Dots                                                   #
+    ########################################################################
+
+    with tab_return:
+        cols = ["total_return"]
+        names= ["Total Return"]
+        colors = ['#d62728']
+
+        fig = go.Figure()
+    
+        for i in range(len(cols)):
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df[cols[i]], 
+                mode='markers', 
+                name=names[i],
+                hoverinfo='y',
+                hovertemplate='$%{y:,.0f}',
+                marker=dict(size=10, color=colors[i]),
+            ))
+
+        fig.update_layout(
+            title="Total Returns Over Time",
+            xaxis=dict(title='Year',),
+            yaxis=dict(title='Value at End of Year', tickformat='$,.0f'),
+            height=700,
+            hovermode='x'
+        )
+
+        fig_display(fig)
+
+    ########################################################################
+    #      Net Income - Dots                                               #
+    ########################################################################
+
+    with tab_net_income:
+        cols = ["noi_mo", "niaf_mo"]
+        names= ["Monthly NOI", "Monthly NIAF"]
+        colors = ['#1f77b4', '#ff7f0e']
+
+        fig = go.Figure()
+
+        for i in range(len(cols)):
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df[cols[i]], 
+                mode='markers', 
+                name=names[i],
+                hoverinfo='y',
+                hovertemplate='$%{y:,.0f}',
+                marker=dict(size=10, color=colors[i]),
+            ))
+
+        fig.update_layout(
+            title="Monthly Net Income",
+            xaxis=dict(title='Year',),
+            yaxis=dict(title='Precent', tickformat='%,.0f'),
+            height=700,
+            hovermode='x'
+        )
+
+        fig_display(fig)
+
+    ########################################################################
+    #      Rent vs Own ROI - Dots                                              #
+    ########################################################################
+
+    with tab_rent_vs_own_roi:
+        cols = ["roi", "roi_rent"]
+        names= ["Home ROI", "Rent + Stock Market ROI"]
+        colors = ['#1f77b4', '#ff7f0e']
+
+        fig = go.Figure()
+
+        for i in range(len(cols)):
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df[cols[i]],  # Multiply by 100 to convert to percent
+                mode='markers', 
+                name=names[i],
+                hoverinfo='y',
+                #hovertemplate='%{y:.1f}%',  # Format as percent with one decimal place
+                marker=dict(size=10, color=colors[i]),
+            ))
+
+        fig.update_layout(
+            title="ROI of Home Ownership vs Renting + Stock Market",
+            xaxis=dict(title='Year'),
+            yaxis=dict(title='Percent', tickformat='.0%'),  # Format ticks as percent
+            height=700,
+            hovermode='x'
+)
+
+        fig_display(fig)
+
+
+    ########################################################################
+    #      Rent vs Own Return - Dots                                              #
+    ########################################################################
+        
+    with tab_remt_vs_own_return:
+        cols = ["total_return", "total_return_rent"]
+        names= ["Total Return", "Total Return Rent"]
+        colors = ['#d62728', '#ff7f0e']
+
+        fig = go.Figure()
+    
+        for i in range(len(cols)):
+            fig.add_trace(go.Scatter(
+                x=yearly_df.index + 1, 
+                y=yearly_df[cols[i]], 
+                mode='markers', 
+                name=names[i],
+                hoverinfo='y',
+                hovertemplate='$%{y:,.0f}',
+                marker=dict(size=10, color=colors[i]),
+            ))
+
+        fig.update_layout(
+            title="Total Returns Over Time",
+            xaxis=dict(title='Year',),
+            yaxis=dict(title='Value at End of Year', tickformat='$,.0f'),
+            height=700,
+            hovermode='x'
+        )
+
+        fig_display(fig)
+
+
 
 run_calculator()

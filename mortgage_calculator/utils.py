@@ -27,7 +27,7 @@ def display_metrics_in_row(metrics, num_cols):
 def format_label_string(label):
     """Format label string for display on plotly chart."""
     output = label.lower().replace("_", " ")
-    stop_words = ["sum", "mean", "cum"]
+    stop_words = ["sum", "mean", "cum", "mo", "exp"]
     for word in stop_words:
         output = output.replace(f" {word}", "")
     output = output.title()

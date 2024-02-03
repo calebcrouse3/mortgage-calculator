@@ -2,6 +2,126 @@
 
 
 
+def mortgage_inputs():
+    st.markdown("### Mortgage")
+    populate_columns([
+        lambda: dollar_input("Home Price", ss.home_price.key,
+            help="The price of the home you are considering purchasing."
+        ),
+    ], 2)
+    populate_columns([
+        lambda: dollar_input("Down Payment", ss.down_payment.key, 
+            help="""The amount of cash you have to put towards the upfront costs of buying a home. 
+            Closing costs will be subtracted from this value and the remainder is the effective 
+            down payment."""
+        ),
+        lambda: rate_input("Interest", ss.interest_rate.key, 
+            help="""The interest rate on your mortgage. Each month, this percentage is multiplied 
+            by the remaining loan balance to calculate the interest payment."""
+        ),
+    ], 2)
+    populate_columns([
+        lambda: rate_input("Home Value Growth", ss.yr_home_appreciation.key, asterisk=False, 
+            help="""The yearly increase in the value of your home. As your home increases in value, 
+            you'll have to pay more in property taxes and insurance. This value is updated whenever
+            you select a new region and corresponds to the median yearly home value increase over 
+            the past 10 years in that region"""
+        ),
+        lambda: rate_input("Property Tax", ss.yr_property_tax_rate.key, asterisk=False, 
+            help="""This is the tax rate on your property. Property tax rates are set by the state 
+            government. This rate is multiplied by the value of the home to get the total taxes paid 
+            each year. This value is updated whenever you select a new region and corresponds to the 
+            median property tax rate in the state in which this region is located."""
+        ),
+    ], 2)
+    populate_columns([
+        lambda: dollar_input("HOA Fees", ss.mo_hoa_fees.key,
+            help="""If your home is part of a homeowners association, you will have to pay monthly
+            HOA fees. This value is updated each year based on the inflation rate."""
+        ),
+            lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key,
+            help="""This is the yearly cost of homeowners insurance. This rate is multiplied by the
+            value of the home to get the total insurance paid each year. Insurance rates can vary
+            based on the location of the home and the type of insurance coverage.""",
+        ),
+    ], 2)
+
+
+def other_inputs():
+    with st.expander("Mortgage+", expanded=False):
+        st.write("The defaults here will probably work for most people")
+        populate_columns([
+            lambda: rate_input("Closing Costs", ss.closing_costs_rate.key, 
+                help="""These are the additional upfront cost of buying a home through a lender. 
+                Its often calculated as a percentage of the purchase price of the home. The closing costs
+                will be subracted from your down payment to calculate the effective down payment."""
+                ),
+            lambda: rate_input("PMI Rate", ss.pmi_rate.key, 
+                help="""PMI is an additional monthly cost that is required if your down payment is less
+                than 20% of the purchase price of the home. This rate is multiplied by the value of the
+                home to get the total PMI paid each year. PMI can be cancelled once you have 20% equity in the home
+                which can occur from paying down the principle or from the value of the home increasing."""
+                ),
+        ], 2)
+        populate_columns([
+            lambda: rate_input("Inflation Rate", ss.yr_inflation_rate.key,
+                help="""This is the yearly inflation rate which measure how the cost of goods goes 
+                up. This rate is used to update the value of your monthly maintenance and HOA fees 
+                each year."""
+            ),
+            lambda: dollar_input("Monthly Maintenance", ss.mo_maintenance.key,
+                help="""Owning a home requires maintenance and upkeep. This is the monthly cost of
+                maintaining your home. This value is updated each year based on the inflation rate."""
+            ),     
+        ], 2)
+
+
+def extra_mortgage_payment_inputs():
+    with st.expander("Extra Payments", expanded=False):
+        st.write("Extra payments can help you pay off your loan faster and reduce the total amount of interest you pay over the life of the loan.")
+        populate_columns([
+            lambda: dollar_input("Extra Monthly Payments", ss.mo_extra_payment.key,
+            help="""This is the amount of extra money you will pay towards the principle of your loan
+            each month. This can help you pay off your loan faster and reduce the total amount of
+            interest you pay over the life of the loan."""                     
+            ),
+            lambda: st.number_input("Number of Payments", min_value=0, max_value=int(1e4), key=ss.num_extra_payments.key,
+            help="""This is the number of months you will pay extra payments towards the principle of
+            your loan. After this number of months, you will stop paying extra payments and only pay
+            the normal monthly payment."""
+            ),
+        ], 2)
+
+
+def rent_income_inputs():
+    with st.expander("Rental Income", expanded=False):
+        st.write("You can rent out all or a portion of your home to offset the cost of homeownership or make some profit.")
+        populate_columns([
+            lambda: dollar_input("Monthly Rental Income", ss.mo_rent_income.key,
+                help="""This is the monthly cost of renting a home. This value is updated each year
+                based on the yearly rent increase rate."""      
+            ),
+            lambda: rate_input("Yearly Rent Increase", ss.yr_rent_increase.key,
+                help="""This is the yearly increase in the cost of rent. This value is used to update
+                the monthly rent each year."""
+            ),
+        ], 2)
+
+
+def calculate():
+    populate_columns([
+        lambda: st.button("Reset Values", on_click=ss.clear, help="Reset all inputs to their default values."),
+        lambda: st.button("Calculate", help="Run the simulation with the current inputs."),
+    ], 2)
+
+
+def hide_text_input():
+    populate_columns([
+        lambda: st.checkbox("Hide All Text Blobs", key=ss.hide_text.key),
+    ], 2)
+
+
+
 def renting_comparison_inputs():
     #with st.expander("Renting Comparison Inputs", expanded=False):
         populate_columns([
@@ -269,3 +389,57 @@ def post_process_sim_df(sim_df):
 
         # Display the figure
         fig_display(fig)
+
+
+
+
+def get_metrics(yearly_df):
+
+    default_interest_paid = get_total_interest_paid(LOAN_AMOUNT, ss.interest_rate.val)
+    actual_interest_paid = sum(yearly_df['interest_sum'])
+    
+
+    # find first year where equity minus costs is higher than previous year
+    def year_of_uptrend(values):
+        for i in range(len(values) - 1):
+            if values[i + 1] > values[i]:
+                return i + 1
+        return 30
+            
+
+    # Function that tells you at what index x is greater than y
+    def min_crossover(x, y):
+        for i in range(len(x)):
+            if x[i] > y[i]:
+                return i
+        return 30
+    
+
+    def year_of_profit(init_equity, profit_col):
+        for i in range(len(profit_col)):
+            if profit_col[i] > init_equity:
+                return i
+        return 30
+    
+    summary_metrics = {
+        "Loan Amount": format_currency(LOAN_AMOUNT),
+        "Closing Costs": format_currency(CLOSING_COSTS),
+        "Effective Down Payments": format_currency(EFFECTIVE_DOWN_PAYMENT),
+        "Total Paid": format_currency(sum(yearly_df['total_sum'])),
+        "Principal Paid": format_currency(sum(yearly_df['principal_sum'])),
+        "Interest Paid": format_currency(actual_interest_paid),
+        "Taxes Paid": format_currency(sum(yearly_df['property_tax_sum'])),
+        "Other Expenses Paid": format_currency(sum(yearly_df['misc_sum'])),
+        "PMI Paid": format_currency(sum(yearly_df['pmi_sum'])),
+        "Extra Payments": format_currency(sum(yearly_df['extra_payment_sum'])),
+        "Interest Saved": format_currency(max(0, default_interest_paid - actual_interest_paid)),
+        "Rental Income": format_currency(sum(yearly_df['rent_income_sum'])),
+    }
+
+    home_value_metrics = {
+        "Years until Profitable": "TODO", # int(year_of_uptrend(yearly_df["equity_less_costs_hh"])),
+        "Years until Profitable with Rent": "TODO",
+        "Increased Equity 10 Years": format_currency(yearly_df["equity"].iloc[10] -  yearly_df["equity"].iloc[10]),
+    }
+
+    return summary_metrics, home_value_metrics

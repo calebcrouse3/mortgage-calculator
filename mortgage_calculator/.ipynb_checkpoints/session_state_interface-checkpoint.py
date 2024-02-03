@@ -30,10 +30,9 @@ class SessionStateInterface:
         # Define counter_generator as a static method so it can be called without an instance
         self.hide_text = create(False)
         self.home_price = create(300000)
-        self.rehab = create(1000)
         self.down_payment = create(50000)
-        self.closing_costs_rate = create(3.0, rate=True)
         self.interest_rate = create(7.0, rate=True)
+        self.closing_costs_rate = create(3.0, rate=True)
         self.pmi_rate = create(0.5, rate=True)
         self.yr_property_tax_rate = create(1.0, rate=True)
         self.yr_home_appreciation = create(3.0, rate=True)
@@ -41,14 +40,13 @@ class SessionStateInterface:
         self.mo_hoa_fees = create(100)
         self.mo_maintenance = create(100)
         self.yr_inflation_rate = create(3.0, rate=True)
-        self.mo_rent_income = create(2000)
-        self.mo_other_income = create(100)
+        self.mo_extra_payment = create(200)
+        self.num_extra_payments = create(12)
+        self.mo_rent_cost = create(1500)
+        self.yr_stock_appreciation = create(7.0, rate=True)
+        self.mo_rent_income = create(0)
         self.yr_rent_increase = create(3.0, rate=True)
-        self.mo_utility = create(200)
-        self.management_rate = create(5.0, rate=True)
-        self.vacancy_rate = create(5.0, rate=True)
-        self.paydown_with_profit = create(True)
-        self.rent_exp = create(1500)
+        self.stock_tax_rate = create(15.0, rate=True)
 
     @staticmethod
     def counter_generator():
