@@ -49,6 +49,10 @@ class SessionStateInterface:
         self.vacancy_rate = create(5.0, rate=True)
         self.paydown_with_profit = create(True)
         self.rent_exp = create(1500)
+        self.use_gross_returns = create(False)
+        self.rent_use_gross_returns = create(False)
+        self.include_selling_costs = create(True)
+
 
     @staticmethod
     def counter_generator():

@@ -22,10 +22,10 @@ CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
 OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
 LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
 MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
+STOCK_GROWTH_RATE = 0.07
+INCOME_TAX_RATE = 0.25
 REALTOR_RATE = 0.06
 STOCK_TAX_RATE = 0.15
-STOCK_GROWTH_RATE = 0.07
-INCOME_TAX_RATE = 0.0 #0.25
 
 
 def mortgage_inputs():
@@ -75,13 +75,6 @@ def rent_income_inputs():
         ], 2)
 
 
-def rent_expense_inputs():
-    with st.expander("Rental Expense", expanded=False):
-        populate_columns([
-            lambda: dollar_input("Rent Expense", ss.rent_exp.key),
-        ], 2)
-
-
 def calculate_inputs():
     populate_columns([
         lambda: st.button("Reset Values", on_click=ss.clear),
@@ -93,6 +86,30 @@ def hide_text_input():
     populate_columns([
         lambda: st.checkbox("Hide All Text Blobs", key=ss.hide_text.key),
     ], 2)
+
+
+def selling_fees_inputs():
+    populate_columns([
+        lambda: st.checkbox("Include Selling taxes/fees", key=ss.include_selling_costs.key),
+    ], 1)
+
+
+def returns_inputs():
+    populate_columns([
+        lambda: st.checkbox("Gross Returns", key=ss.use_gross_returns.key),
+    ], 4)
+
+
+def rent_returns_inputs():
+    populate_columns([
+        lambda: st.checkbox("Gross Returns", key=ss.rent_use_gross_returns.key),
+    ], 4)
+    populate_columns([
+        lambda: dollar_input("Renting Cost", ss.rent_exp.key)
+    ], 4)
+    populate_columns([
+        lambda: st.markdown(f"\n**Yearly Rent Increase {ss.yr_rent_increase.val*100}%")
+    ], 4)
 
 
 def run_simulation():
@@ -172,7 +189,7 @@ def run_simulation():
         if adj_total_income < principal_exp:
             principal_makeup = principal_exp - adj_total_income
 
-        if niaf > 0:
+        if niaf > 0 and ss.include_selling_costs.val:
             niaf *= (1 - INCOME_TAX_RATE)
 
         # optionally use niaf to pay down loan
@@ -320,7 +337,11 @@ def post_process_sim_df(sim_df):
 
     # calculating "effective" equity by factoring in the price of selling the home.
     # are there other exit strategies that should be considered?
-    year_df["equity"] = year_df["home_value"] - year_df["loan_balance"] #- (year_df["home_value"] * REALTOR_RATE)
+    year_df["equity"] = year_df["home_value"] - year_df["loan_balance"] 
+    
+    if ss.include_selling_costs.val:
+        year_df["equity"] = year_df["equity"] - (year_df["home_value"] * REALTOR_RATE)
+    
     # total return exludes the down payment, and any makeup to cover the principle. These is not a 
     # gain because they are not paid by the tenant
     year_df["total_return"] = year_df["equity"] + year_df["cum_niaf"] - ss.down_payment.val - year_df["cum_principal_makeup"]
@@ -330,16 +351,18 @@ def post_process_sim_df(sim_df):
     # i.e. these things are not a "gain" in the same way that the down payment is not a gain.
     # additionally, remove taxes paid when cashing out the stock portfolio.
     year_df["total_return_rent"] = (
-        (year_df["stock_value"] * (1 - STOCK_TAX_RATE)) 
+        year_df["stock_value"]
         - year_df["cum_rent_exp"]
         - year_df["cum_stock_contrib"]
         - OOP
     )
+
+    if ss.include_selling_costs.val:
+        year_df["total_return_rent"] = year_df["total_return_rent"] - (year_df["stock_value"] * STOCK_TAX_RATE)
+    
     year_df["roi_rent"] = year_df["total_return_rent"] / OOP
 
-
     # TODO show tooltip that gives the numbers going into the ROI for each bullet point
-
     return year_df
 
 
@@ -351,14 +374,14 @@ def run_calculator():
     with st.sidebar:
         calculate_inputs()
         mortgage_inputs()
+        selling_fees_inputs()
         rent_income_inputs()
-        rent_expense_inputs()
         hide_text_input()
 
     yearly_df = post_process_sim_df(run_simulation())
 
     # print some cols from yearly df to audit the results
-    #st.write(list(yearly_df.columns))
+    # st.write(list(yearly_df.columns))
 
     audit_cols = [
         "interest_exp",
@@ -416,28 +439,22 @@ def run_calculator():
         "total_return_rent",
         #"roi_rent"
     ]
-    
-    st.write(yearly_df[audit_cols])
-
+    # st.write(yearly_df[audit_cols])
 
     (
         tab_exp, 
         tab_exp_over_time, 
-        tab_home_value, 
-        tab_roi,
-        tab_return,
-        tab_net_income,
-        tab_rent_vs_own_roi,
-        tab_remt_vs_own_return
+        tab_home_value,
+        tab_net_income, 
+        tab_returns,
+        tab_rent_vs_own
     ) = st.tabs([ 
         "Expenses First Year", 
         "Expenses Over Time", 
         "Home Value",
-        "ROI",
-        "Returns",
         "Net Income",
-        "Rent vs Own (ROI)",
-        "Rent vs Own (Return)"
+        "Returns",
+        "Rent vs Own"
     ])
 
     COLOR_MAP = {
@@ -451,10 +468,6 @@ def run_calculator():
         "management_exp_mo":    "#FFD16A",  # Light Orange
         "pmi_exp_mo":           "#9030A1",  # Purple
     }
-
-    ########################################################################
-    #      Expenses First Year (Pie)                                       #
-    ########################################################################
 
     with tab_exp:
         df = yearly_df.loc[0:0, list(COLOR_MAP.keys())]
@@ -497,11 +510,6 @@ def run_calculator():
 
         fig_display(fig)
 
-
-    ########################################################################
-    #      Expenses Over Time - Stacked Bar                                #
-    ########################################################################
-
     with tab_exp_over_time:
         zero_sum_cols = [k for k in COLOR_MAP.keys() if yearly_df[k].sum() == 0]
         color_map_redux = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
@@ -540,203 +548,50 @@ def run_calculator():
         fig.update_xaxes(range=[0, 31])
         fig_display(fig)
 
-
-    ########################################################################
-    #      Home Value - Lines                                              #
-    ########################################################################
-
     with tab_home_value:
         cols = ["home_value", "equity"]
         names= ["Home Value", "Equity"]
         colors = ['#1f77b4', '#ff7f0e', '#d62728']
-
-        fig = go.Figure()
-    
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]], 
-                mode='lines', 
-                name=names[i],
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                line=dict(width=4, color=colors[i]),
-            ))
-
-        fig.update_layout(
-            title="Home Value and Equity Over Time",
-            xaxis=dict(title='Year',),
-            yaxis=dict(title='Value at End of Year', tickformat='$,.0f'),
-            height=700,
-            hovermode='x'
-        )
-
-        fig_display(fig)
-
-
-    ########################################################################
-    #      ROI - Dots                                                      #
-    ########################################################################
-
-    with tab_roi:
-        # add ROE?
-        cols = ["roi", "coc_roi"] 
-        names= ["ROI", "COC ROI"]
-        colors = ['#1f77b4', '#ff7f0e']
-
-        fig = go.Figure()
-
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]], 
-                mode='markers', 
-                name=names[i],
-                hoverinfo='y',
-                #hovertemplate='$%{y:,.0f}',
-                marker=dict(size=10, color=colors[i]),
-            ))
-
-        fig.update_layout(
-            title="ROI Over Time",
-            xaxis=dict(title='Year',),
-            #yaxis=dict(title='Precent', tickformat='%,.0f'),
-            height=700,
-            hovermode='x'
-        )
-
-        fig_display(fig)
-
-
-    ########################################################################
-    #      Return - Dots                                                   #
-    ########################################################################
-
-    with tab_return:
-        cols = ["total_return"]
-        names= ["Total Return"]
-        colors = ['#d62728']
-
-        fig = go.Figure()
-    
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]], 
-                mode='markers', 
-                name=names[i],
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                marker=dict(size=10, color=colors[i]),
-            ))
-
-        fig.update_layout(
-            title="Total Returns Over Time",
-            xaxis=dict(title='Year',),
-            yaxis=dict(title='Value at End of Year', tickformat='$,.0f'),
-            height=700,
-            hovermode='x'
-        )
-
-        fig_display(fig)
-
-    ########################################################################
-    #      Net Income - Dots                                               #
-    ########################################################################
+        title = "Home Value and Equity Over Time"
+        plot_dots(yearly_df, cols, names, colors, title, percent=False)
 
     with tab_net_income:
         cols = ["noi_mo", "niaf_mo"]
         names= ["Monthly NOI", "Monthly NIAF"]
         colors = ['#1f77b4', '#ff7f0e']
+        title = "Monthly Net Income"
+        plot_dots(yearly_df, cols, names, colors, title, percent=False)
 
-        fig = go.Figure()
+    with tab_returns:
+        returns_inputs()
 
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]], 
-                mode='markers', 
-                name=names[i],
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                marker=dict(size=10, color=colors[i]),
-            ))
+        if ss.use_gross_returns.val:
+            cols = ["total_return"]
+            names= ["Total Return"]
+            colors = ['#d62728']
+            title = "Total Returns Over Time"
+            plot_dots(yearly_df, cols, names, colors, title, percent=False)
+        else:
+            cols = ["roi", "coc_roi"] 
+            names= ["ROI", "COC ROI"]
+            colors = ['#1f77b4', '#ff7f0e']
+            title = "ROI Over Time"
+            plot_dots(yearly_df, cols, names, colors, title, percent=True)
 
-        fig.update_layout(
-            title="Monthly Net Income",
-            xaxis=dict(title='Year',),
-            yaxis=dict(title='Precent', tickformat='%,.0f'),
-            height=700,
-            hovermode='x'
-        )
+    with tab_rent_vs_own:
+        rent_returns_inputs()
 
-        fig_display(fig)
-
-    ########################################################################
-    #      Rent vs Own ROI - Dots                                              #
-    ########################################################################
-
-    with tab_rent_vs_own_roi:
-        cols = ["roi", "roi_rent"]
-        names= ["Home ROI", "Rent + Stock Market ROI"]
-        colors = ['#1f77b4', '#ff7f0e']
-
-        fig = go.Figure()
-
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]],  # Multiply by 100 to convert to percent
-                mode='markers', 
-                name=names[i],
-                hoverinfo='y',
-                #hovertemplate='%{y:.1f}%',  # Format as percent with one decimal place
-                marker=dict(size=10, color=colors[i]),
-            ))
-
-        fig.update_layout(
-            title="ROI of Home Ownership vs Renting + Stock Market",
-            xaxis=dict(title='Year'),
-            yaxis=dict(title='Percent', tickformat='.0%'),  # Format ticks as percent
-            height=700,
-            hovermode='x'
-)
-
-        fig_display(fig)
-
-
-    ########################################################################
-    #      Rent vs Own Return - Dots                                              #
-    ########################################################################
-        
-    with tab_remt_vs_own_return:
-        cols = ["total_return", "total_return_rent"]
-        names= ["Total Return", "Total Return Rent"]
-        colors = ['#d62728', '#ff7f0e']
-
-        fig = go.Figure()
-    
-        for i in range(len(cols)):
-            fig.add_trace(go.Scatter(
-                x=yearly_df.index + 1, 
-                y=yearly_df[cols[i]], 
-                mode='markers', 
-                name=names[i],
-                hoverinfo='y',
-                hovertemplate='$%{y:,.0f}',
-                marker=dict(size=10, color=colors[i]),
-            ))
-
-        fig.update_layout(
-            title="Total Returns Over Time",
-            xaxis=dict(title='Year',),
-            yaxis=dict(title='Value at End of Year', tickformat='$,.0f'),
-            height=700,
-            hovermode='x'
-        )
-
-        fig_display(fig)
-
-
+        if ss.rent_use_gross_returns.val:
+            cols = ["total_return", "total_return_rent"]
+            names= ["Total Return", "Total Return Rent"]
+            colors = ['#d62728', '#ff7f0e']
+            title = "Total Returns Over Time"
+            plot_dots(yearly_df, cols, names, colors, title, percent=False)
+        else:
+            cols = ["roi", "roi_rent"]
+            names= ["Home ROI", "Rent + Stock Market ROI"]
+            colors = ['#1f77b4', '#ff7f0e']
+            title = "ROI of Home Ownership vs Renting + Stock Market"
+            plot_dots(yearly_df, cols, names, colors, title, percent=True)
 
 run_calculator()
