@@ -5,9 +5,12 @@ import plotly.graph_objs as go
 def format_currency(value):
     return "${:,.0f}".format(value)
 
+def format_percent(value):
+    return "{:.1%}".format(value)
+
 
 def fig_display(fig):
-    st.plotly_chart(fig, config={'displayModeBar': False}, use_container_width=True)
+    st.plotly_chart(fig, config={'displayModeBar': False}, use_container_width=False)
 
 
 def local_css(file_name):
