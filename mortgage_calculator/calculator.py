@@ -435,7 +435,7 @@ def get_investment_metrics(df):
 
 
 def get_tab_columns():
-    col1, col2 =  st.columns([2, 5])
+    col1, _, col2 =  st.columns([2, .5, 5])
     return col2, col1
 
 
@@ -481,7 +481,7 @@ def run_calculator():
 
     
     with st.sidebar:
-        calculate_inputs()
+        #calculate_inputs()
         st.markdown("### Input Fields")
         mortgage_inputs()
         expenses_inputs()
