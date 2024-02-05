@@ -16,12 +16,20 @@ from session_state_interface import SessionStateInterface
 st.set_page_config(layout="wide")
 ss = SessionStateInterface()
 
+HEIGHT = 700
+WIDTH = 700
+
+
+# TODO, reference the 5 percent rule in the rent vs own page?
 # TODO, cache yearly df for user?
+# TODO show tooltip that gives the numbers going into the ROI for each bullet point
+
 
 CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
 OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
 LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
 MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
+
 STOCK_GROWTH_RATE = 0.07
 INCOME_TAX_RATE = 0.25
 REALTOR_RATE = 0.06
@@ -55,7 +63,7 @@ def expenses_inputs():
             lambda: dollar_input("Utilities", ss.mo_utility.key),
         ], 2)
         populate_columns([
-            lambda: dollar_input("Monthly Maintenance", ss.mo_maintenance.key),     
+            lambda: rate_input("Yearly Maintenance", ss.yr_maintenance.key),     
         ], 2)
 
 
@@ -85,6 +93,14 @@ def rent_income_inputs():
         ], 2)
 
 
+def selling_inputs():
+    with st.expander("Selling Fees/Taxes", expanded=False):
+        populate_columns([
+            lambda: rate_input("Income Tax Rate", ss.income_tax_rate.key),
+            lambda: rate_input("Realtor Fee", ss.realtor_rate.key),
+        ], 2)
+
+
 def calculate_inputs():
     populate_columns([
         lambda: st.button("Reset Values", on_click=ss.clear),
@@ -95,13 +111,22 @@ def calculate_inputs():
 def hide_text_input():
     populate_columns([
         lambda: st.checkbox("Hide All Text Blobs", key=ss.hide_text.key),
-    ], 2)
-
-
-def selling_fees_inputs():
-    populate_columns([
-        lambda: st.checkbox("Include Selling taxes/fees", key=ss.include_selling_costs.key),
     ], 1)
+
+
+# def selling_fees_inputs():
+#     populate_columns([
+#         lambda: st.checkbox("Include Selling Taxes/Fees", key=ss.include_selling_costs.key, 
+#             help="Includes realtor fees, income tax, and taxes on stock sales. Will effect returns, equity, and profit to pay down loan."),
+#     ], 1)
+
+
+def chart_inputs():
+    with st.expander("Chart Options", expanded=False):
+        populate_columns([
+            lambda: st.number_input("Chart xaxis max", min_value=5, max_value=30, step=5, key=ss.xlim.key),
+            lambda: st.selectbox("Chart Mode", ["Lines", "Dots"], key=ss.chart_mode.key),
+        ], 2)
 
 
 def returns_inputs():
@@ -112,10 +137,14 @@ def returns_inputs():
 
 def rent_returns_inputs():
     populate_columns([
-        lambda: st.checkbox("Gross Returns", key=ss.rent_use_gross_returns.key),
+        lambda: dollar_input("Renting Cost", ss.rent_exp.key, 
+        help="This is the current monthly rent you would pay instead of buying the home in consideration."),
     ], 1)
     populate_columns([
-        lambda: dollar_input("Renting Cost", ss.rent_exp.key),
+        lambda: rate_input("Stock Tax Rate", ss.stock_tax_rate.key),
+    ], 1)
+    populate_columns([
+        lambda: rate_input("Stock Growth Rate", ss.stock_growth_rate.key),
     ], 1)
 
 
@@ -133,7 +162,7 @@ def run_simulation():
     pmi_price = get_monthly_pmi(ss.home_price.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.home_price.val)
     property_tax_exp = ss.home_price.val * ss.yr_property_tax_rate.val / 12
     insurance_exp = ss.home_price.val * ss.yr_insurance_rate.val / 12
-    maintenance_exp = ss.mo_maintenance.val
+    maintenance_exp = ss.home_price.val * ss.yr_maintenance.val / 12
     hoa_exp = ss.mo_hoa_fees.val
     utility_exp = ss.mo_utility.val
     rent_income = ss.mo_rent_income.val
@@ -155,9 +184,8 @@ def run_simulation():
     for month in np.arange(12 * 30):
 
         interest_exp = loan_balance * ss.interest_rate.val / 12
-        
-        # if youre paying more principle than scheduled...
-        # cant pay more principal than loan balance
+
+        # if youre ahead on payments, you cant pay more principal than the loan balance
         principal_exp = MONTHLY_PAYMENT - interest_exp
         if principal_exp >= loan_balance:
             principal_exp = loan_balance
@@ -169,8 +197,6 @@ def run_simulation():
         if pmi_required:
             pmi_exp = pmi_price
 
-
-        # if rent covers all cost, pay extra towards the principle
         op_exp = (
             property_tax_exp +
             insurance_exp +
@@ -180,46 +206,32 @@ def run_simulation():
             utility_exp +
             management_exp
         )
+
         total_exp = op_exp + interest_exp + principal_exp
         total_income = rent_income + other_income
         adj_total_income = total_income * (1 - ss.vacancy_rate.val)
-
-
-        # should additional cash flow pay down loan or flow into stock portfolio?
         noi = adj_total_income - op_exp
         niaf = adj_total_income - total_exp
 
-        # This is the fraction of the principle you have to cover, if income doesnt cover principle.
-        # This value should be subtracted from ROI because you are paying for it, not the tenant.
-        # This is earned equity that isnt a return, its just a payment.
-        principal_makeup = 0
-        if adj_total_income < principal_exp:
-            principal_makeup = principal_exp - adj_total_income
-
-        if niaf > 0 and ss.include_selling_costs.val:
-            niaf *= (1 - INCOME_TAX_RATE)
-
         # optionally use niaf to pay down loan
         if niaf > 0 and ss.paydown_with_profit.val:
+            niaf *= (1 - ss.income_tax_rate.val)
             if niaf > loan_balance:
                 loan_balance = 0
             else:
                 loan_balance -= niaf
 
-        # update home value
-        home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
-
         # update pmi_required, but dont update pmi cost unless its end of year
         true_pmi = get_monthly_pmi(home_value, loan_balance, ss.pmi_rate.val, ss.home_price.val)
         pmi_required = true_pmi > 0
 
-        # update stock portfolio
-        stock_value = add_growth(stock_value, STOCK_GROWTH_RATE, months=1)
+        home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
+        stock_value = add_growth(stock_value, ss.stock_growth_rate.val, months=1)
         stock_contrib = 0
         if total_exp > rent_exp:
             stock_value += total_exp - rent_exp
             stock_contrib = total_exp - rent_exp
-            
+
 
         month_data = {
             "index": month,
@@ -240,7 +252,6 @@ def run_simulation():
             "rent_income": rent_income,
             "other_income": other_income,
             "total_income": total_income,
-            "principal_makeup": principal_makeup, # need a different name?
             "adj_total_income": adj_total_income,
             "noi": noi,
             "niaf": niaf,
@@ -259,7 +270,7 @@ def run_simulation():
             insurance_exp = home_value * ss.yr_insurance_rate.val / 12
             hoa_exp = add_growth(hoa_exp, ss.yr_inflation_rate.val, 12)
             utility_exp = add_growth(utility_exp, ss.yr_inflation_rate.val, 12)
-            maintenance_exp = add_growth(maintenance_exp, ss.yr_inflation_rate.val, 12)
+            maintenance_exp = home_value * ss.yr_maintenance.val / 12
             pmi_price = true_pmi
             rent_income = add_growth(rent_income, ss.yr_rent_increase.val, 12)
             other_income = add_growth(other_income, ss.yr_rent_increase.val, 12)
@@ -295,8 +306,7 @@ def post_process_sim_df(sim_df):
             "noi",
             "niaf",
             "rent_exp",
-            "stock_contrib",
-            "principal_makeup"
+            "stock_contrib"
     ]
 
     agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
@@ -333,86 +343,32 @@ def post_process_sim_df(sim_df):
     cumsum_cols = [
         "niaf",
         "rent_exp",
-        "principal_exp",
-        "stock_contrib",
-        "principal_makeup"
     ]
 
     for col in cumsum_cols:
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
-    # TODO. Selling tax, realtor fees, other sellings fees are an optional addition?
-
-    # calculating "effective" equity by factoring in the price of selling the home.
-    # are there other exit strategies that should be considered?
-    year_df["equity"] = year_df["home_value"] - year_df["loan_balance"] 
-    
-    if ss.include_selling_costs.val:
-        year_df["equity"] = year_df["equity"] - (year_df["home_value"] * REALTOR_RATE)
-    
-    # total return exludes the down payment, and any makeup to cover the principle. These is not a 
-    # gain because they are not paid by the tenant
-    year_df["total_return"] = year_df["equity"] + year_df["cum_niaf"] - ss.down_payment.val - year_df["cum_principal_makeup"]
+    year_df["equity"] = year_df["home_value"] * (1 - ss.realtor_rate.val) - year_df["loan_balance"] 
     year_df["coc_roi"] = year_df["cum_niaf"] / OOP
-    year_df["roi"] = year_df["total_return"] / OOP
-    # analogously, rent total return excludes the OOP and additional contributions.
-    # i.e. these things are not a "gain" in the same way that the down payment is not a gain.
-    # additionally, remove taxes paid when cashing out the stock portfolio.
-    year_df["total_return_rent"] = (
-        year_df["stock_value"]
-        - year_df["cum_rent_exp"]
-        - year_df["cum_stock_contrib"]
-        - OOP
-    )
+    year_df["profit"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - CLOSING_COSTS
+    year_df["roi"] = year_df["profit"] / OOP
+    year_df["renting_profit"] = year_df["stock_value"] * (1- ss.stock_tax_rate.val) - year_df["cum_rent_exp"]
 
-    if ss.include_selling_costs.val:
-        year_df["total_return_rent"] = year_df["total_return_rent"] - (year_df["stock_value"] * STOCK_TAX_RATE)
-    
-    year_df["roi_rent"] = year_df["total_return_rent"] / OOP
-
-    # TODO show tooltip that gives the numbers going into the ROI for each bullet point
     return year_df
 
 
-def dict_to_metrics(data_dict, title):
-    keys = list(data_dict.keys())
-    values = list(data_dict.values())
-
-    cells = dict(
-        values=[keys, values],
-        #line_color='rgba(0,0,0,0)',
-        fill_color='rgba(255,255,255,0)'
-    )
-
-    header = dict(
-        line_color="rgba(0,0,0,0)",
-        fill_color='rgba(255,255,255,0)',
-        height=0
-    )
-
-    fig = go.Figure(data=[go.Table(
-        header=header,
-        cells=cells,
-    )])
-
-    fig.update_layout(
-        margin=dict(l=0, r=0, t=0, b=0),
-        height=300,
-        width=300,
-    )
-
+def dict_to_metrics(data_dict):
     st.container(height=20, border=False)
-    st.write(title)
-    st.plotly_chart(fig)
-    #fig_display(fig)
+    for key, value in data_dict.items():
+        st.metric(label=f":orange[{key}]", value=value)
 
 
 def get_mortgage_metrics(df):
     return {
-        "Down Payment": format_currency(ss.down_payment.val),
-        "Rehab": format_currency(ss.rehab.val),
-        "Closing Costs": format_currency(CLOSING_COSTS),
-        "Total": format_currency(OOP),
+        #"Down Payment": format_currency(ss.down_payment.val),
+        #"Rehab": format_currency(ss.rehab.val),
+        #"Closing Costs": format_currency(CLOSING_COSTS),
+        "Cash Outlay": format_currency(OOP),
         "Loan Amount": format_currency(LOAN_AMOUNT),
         "Total Interest Paid": format_currency(df["interest_exp"].sum()),
         "Total PMI Paid": format_currency(df["pmi_exp"].sum()),
@@ -424,18 +380,29 @@ def get_investment_metrics(df):
     # opr_metrics. Monthly gross income / OOP
     opr = df.loc[0, "rent_income_mo"] / OOP
     formatted_opr = format_percent(opr)
+
+    GRM = 0 
+    if df.loc[0, "rent_income"] > 0:
+        GRM = int(df.loc[0, "home_value"] / df.loc[0, "rent_income"])
+
     return  {
-        "GRM": round(df.loc[0, "home_value"] / df.loc[0, "rent_income"]),
+        "GRM": GRM,
         "Cap Rate": format_percent(df.loc[0, "noi"] / ss.home_price.val),
         "Mo Cash Flow (NIAF)": format_currency(df.loc[0, "niaf_mo"]),
         "Year One ROI": format_percent(df.loc[0, "roi"]),
-        "Year Ten ROI": format_percent(df.loc[9, "roi"]),
+        #"Year Ten ROI": format_percent(df.loc[9, "roi"]),
         "1% Rule": f"Yes {formatted_opr}" if opr >= 0.01 else f"No {formatted_opr}",
+    }
+
+def get_rental_comparison_metrics(df):
+    return {
+        "One Year Ownership Upside": format_currency(df.loc[0, "profit"] - df.loc[0, "renting_profit"]),
+        "Five Year Ownership Upside": format_currency(df.loc[9, "profit"] - df.loc[9, "renting_profit"]),
     }
 
 
 def get_tab_columns():
-    col1, _, col2 =  st.columns([2, .5, 5])
+    col1, _, col2 =  st.columns([1, .5, 5])
     return col2, col1
 
 
@@ -447,36 +414,35 @@ def run_calculator():
     if not ss.hide_text.val:
         with st.expander("Introduction", expanded=True):
             st.write("""
-                    \tThis is more than a mortgage calculator. Its a mortgage and real estate investment 
-                    simulator that runs a month over month simluation accounts for all factors and the 
-                    interplay between them. It accounts for all expenses, rental income, reinvestment, 
-                    economic factors, taxes and fees, house hacking scenarios, and includes a novel rent vs 
-                    own comparison accounting for opprtunity costs and house hacking income. Newbies and 
-                    real estate investors alike can use this tool to make informed decisions.""")
-            st.header("Use Cases")
+                    \tThis is not your fathers mortgage calculator. Its a real estate investment 
+                    tool that runs a month over month simulation accounting for all factors and the 
+                    interplay between them. Expenses, rental income, reinvestment, 
+                    economic factors, taxes and fees, and house hacking are all considered.
+                    Additionaly, you'll find a rent vs own analysis tool that gives a complete view 
+                    of trade offs by accounting for the opportunity cost of capital and potential 
+                    income from your primary residence.""")
+            st.header("Example Use Cases")
             st.write("""
-                    - What are all the short and long term costs of owning a home?
-                    - Should I continue to rent or buy a home?
-                    - Whats the impact of economic factors like interest rates, home appreciation, and 
-                    inflation?
-                    - How good are the returns on this rental property?
-                    - How much of my costs can I offset by house hacking?
-                    - How do my mortgage payments change if I pay down the loan with rental income?
+                    - What are the short and long term costs of owning a home?
+                    - Should I continue to rent?
+                    - Whats the impact of economic factors like interest rates and home appreciation?
+                    - Is this rental property a good deal?
+                    - Should I pay down my loan with rental profits?
+                    - How much of my mortgage can I offset by house hacking?
                     """)
             st.header("Getting Started")
             st.write("""
-                    Fill out the field in sidebar and click calculate. Input fields are organized into 
-                    logical groups. Many inputs are filled with reasonable defaults. Look at field tooltips 
-                    for more information about this field and the impact on the simlulation. For in depth 
-                    details on how this simulator runs, term definitions, formulas, and for more tips, navigate to the 'About' tab in 
-                    the main screen.
+                    - Fill out the fields in sidebar which are ogranized into logical groups. Many inputs are prepopulated with reasonable defaults. 
+                    - Look at tooltips for more information if youre unsure what to do with an input. 
+                    - For in depth details, navigate to the 'About' tab.
                     """)
-            st.header("Tips")
+            st.header("Tech Tips")
             st.write("""
-                    All text blocks and explanations can be removed by clicking the 'Hide All Text Blobs' in 
-                    the side bar. Hover over charts to see exact values, or click and drag to zoom in on a 
-                    particular area. You can collapse the sidebar by clicking the x in the top right corner 
-                    of the sidebar. 
+                    - Hover over charts to see exact values
+                    - Click and drag to zoom in on a particular area 
+                    - Adjust chart settings in the sidebar
+                    - Collapse the sidebar by clicking the x in the top right corner of the sidebar 
+                    - Collapse any box with an up arrow in the corner by click the top of the box
                     """)
 
     
@@ -487,8 +453,10 @@ def run_calculator():
         expenses_inputs()
         economic_factors_inputs()
         rent_income_inputs()
-        selling_fees_inputs()
-        hide_text_input()
+        selling_inputs()
+        #selling_fees_inputs()
+        chart_inputs()
+        # hide_text_input()
 
     yearly_df = post_process_sim_df(run_simulation())
 
@@ -497,7 +465,7 @@ def run_calculator():
         tab_exp_over_time, 
         tab_home_value,
         tab_returns,
-        tab_net_income, 
+        #tab_net_income, 
         tab_rent_vs_own,
         #data_table,
         about
@@ -506,7 +474,7 @@ def run_calculator():
         "Expenses Over Time", 
         "Home Value",
         "Returns",
-        "Net Income",
+        #"Net Income",
         "Rent vs Own",
         #"Data Table",
         "About"
@@ -563,13 +531,15 @@ def run_calculator():
 
             fig.update_layout(
                 title="Monthly Expenses in First Year",
-                showlegend=False, height=700,
+                showlegend=False, 
+                height=HEIGHT,
+                width=WIDTH
             )
 
             fig_display(fig)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df), title="Mortgage Metrics")
+            dict_to_metrics(get_mortgage_metrics(yearly_df))
 
 
     with tab_exp_over_time:
@@ -608,7 +578,8 @@ def run_calculator():
                 title="Monthly Expenses Over Time",
                 yaxis=dict(title='Dollars ($)', tickformat='$,.0f'),
                 barmode='stack',
-                height=700,
+                height=HEIGHT,
+                width=WIDTH,
                 xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
             )
 
@@ -616,7 +587,7 @@ def run_calculator():
             fig_display(fig)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df), title="Mortgage Metrics")
+            dict_to_metrics(get_mortgage_metrics(yearly_df))
 
 
     with tab_home_value:
@@ -627,147 +598,97 @@ def run_calculator():
             names= ["Home Value", "Equity"]
             colors = ['#1f77b4', '#ff7f0e', '#d62728']
             title = "Home Value   <i>&</i>   Equity"
-            plot_dots(yearly_df, cols, names, colors, title, percent=False)
+            plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val, percent=False)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df), title="Mortgage Metrics")
+            dict_to_metrics(get_mortgage_metrics(yearly_df))
 
-    with tab_net_income:
-        col1, col2 = get_tab_columns()
+    # with tab_net_income:
+    #     col1, col2 = get_tab_columns()
         
-        # add monthly vs yearly toggle?
-        with col1:
-            cols = ["noi_mo", "niaf_mo"]
-            names= ["Monthly NOI", "Monthly NIAF"]
-            colors = ['#1f77b4', '#ff7f0e']
-            title = "Monthly Net Income"
-            plot_dots(yearly_df, cols, names, colors, title, percent=False)
-        with col2:
-            dict_to_metrics(get_investment_metrics(yearly_df), title="Investment Metrics")
+    #     # add monthly vs yearly toggle?
+    #     with col1:
+    #         cols = ["noi_mo", "niaf_mo"]
+    #         names= ["Monthly NOI", "Monthly NIAF"]
+    #         colors = ['#1f77b4', '#ff7f0e']
+    #         title = "Monthly Net Income"
+    #         plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+    #     with col2:
+    #         dict_to_metrics(get_investment_metrics(yearly_df), title="Investment Metrics")
 
-    with tab_returns:        
+    with tab_returns:
         col1, col2 = get_tab_columns()
         
         with col1:
             if ss.use_gross_returns.val:
-                cols = ["total_return", "cum_niaf"]
-                names= ["Total Return", "Total Cash Flow"]
+                cols = ["profit", "cum_niaf"]
+                names= ["Total Profit (With Equity)", "Total Cash Flow"]
                 colors = ['#d62728', "#ff7f0e"]
                 title = "Total Return (Gross)"
-                plot_dots(yearly_df, cols, names, colors, title, percent=False)
+                plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
             else:
                 cols = ["roi", "coc_roi"]
                 names= ["ROI", "COC ROI"]
                 colors = ['#1f77b4', '#ff7f0e']
                 title = "Total Return (ROI)"
-                plot_dots(yearly_df, cols, names, colors, title, percent=True)
+                plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=True)
 
         with col2:
-            dict_to_metrics(get_investment_metrics(yearly_df), title="Investment Metrics")
+            dict_to_metrics(get_investment_metrics(yearly_df))
+            st.container(height=20, border=False)
+            st.write(":red[Additional Options]")
             returns_inputs()
 
     with tab_rent_vs_own:
+        with st.expander("Rent vs Own", expanded=True):
+            st.write("""
+                    This tab compares the total returns of owning a home versus renting.
+                    In this scenario, instead of buying a home, you would have put all the out of pocket cash into the stock market
+                    and live in a rental. In any month, if the expenses of owning
+                    a home are greater than rent, that extra cash is invested into the stock market.
+                    This captures the opportunity cost of capital. In many situations, if you arent house hacking,
+                    you should expect a loss in the short to medium term for either decision, but by comparing the two,
+                    you can figure out which one saves you more money in the long run, and how long you 
+                    have to live in a home to make it worth it over renting.
+                    """)
+
         col1, col2 = get_tab_columns()
 
         with col1:
-            if ss.rent_use_gross_returns.val:
-                cols = ["total_return", "total_return_rent"]
-                names= ["Own (Gross)", "Rent (Gross)"]
-                colors = ['#d62728', '#ff7f0e']
-                title = "Rent vs Own Total Return (Gross)"
-                plot_dots(yearly_df, cols, names, colors, title, percent=False)
-            else:
-                cols = ["roi", "roi_rent"]
-                names= ["Own (ROI)", "Rent (ROI)"]
-                colors = ['#1f77b4', '#ff7f0e']
-                title = "Rent vs Own Total Return (ROI)"
-                plot_dots(yearly_df, cols, names, colors, title, percent=True)
+            cols = ["profit", "renting_profit"]
+            names= ["Own", "Rent"]
+            colors = ['#d62728', '#ff7f0e']
+            title = "Rent vs Own Total Net Cost"
+            plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+
         with col2:
-            dict_to_metrics({"TODO": "TODO"}, title="Investment Metrics")
+            dict_to_metrics(get_rental_comparison_metrics(yearly_df))
+            st.container(height=20, border=False)
+            st.write(":red[Additional Options]")
             rent_returns_inputs()
 
     # with data_table:
-    #         # default_cols = [
-    #         #     "interest_exp",
-    #         #     "principal_exp",
-    #         #     "op_exp",
-    #         #     "total_exp",
-    #         #     "adj_total_income",
-    #         #     "niaf",
-    #         #     "rent_exp",
-    #         #     "stock_contrib",
-    #         #     "principal_makeup",
-    #         #     "home_value",
-    #         #     "loan_balance",
-    #         #     "stock_value",
-    #         #     "cum_niaf",
-    #         #     "cum_principal_exp",
-    #         #     "cum_stock_contrib",
-    #         #     "cum_principal_makeup",
-    #         #     "equity",
-    #         #     "total_return",
-    #         #     "coc_roi",
-    #         #     "roi",
-    #         #     "total_return_rent",
-    #         # ]
-
-    #         # TODO differentiate principle_exp and principal_makeup
-
-    #         column_groups = {
-    #             'monthly_expenses': [
-    #                 "interest_exp_mo", "principal_exp_mo", "property_tax_exp_mo",
-    #                 "insurance_exp_mo", "hoa_exp_mo", "maintenance_exp_mo",
-    #                 "pmi_exp_mo", "utility_exp_mo", "management_exp_mo",
-    #                 "op_exp_mo", "total_exp_mo",
-    #             ],
-    #             'yearly_expenses': [
-    #                 "interest_exp", "principal_exp", "property_tax_exp",
-    #                 "insurance_exp", "hoa_exp", "maintenance_exp",
-    #                 "pmi_exp", "utility_exp", "management_exp",
-    #                 "op_exp", "total_exp",
-    #             ],
-    #             'monthly_income': [
-    #                 "rent_income_mo", "other_income_mo", "total_income_mo",
-    #                 "adj_total_income_mo",
-    #             ],
-    #             'yearly_income': [
-    #                 "rent_income", "other_income", "total_income",
-    #                 "adj_total_income",
-    #             ],
-    #             'rental_comparison': [
-    #                 "rent_exp", "rent_exp_mo", "stock_contrib",
-    #                 "stock_contrib_mo", "stock_value", "total_return_rent",
-    #                 "roi_rent",
-    #             ],
-    #             'net_income_monthly': [
-    #                 "noi_mo", "niaf_mo",
-    #             ],
-    #             'net_income_yearly': [
-    #                 "noi", "niaf",
-    #             ],
-    #             'home_returns': [
-    #                 "home_value", "loan_balance", "equity",
-    #                 "total_return", "coc_roi", "roi",
-    #             ],
-    #             'other_expenses': [
-    #                 "principal_makeup", "principal_makeup_mo",
-    #             ],
-    #             'cumulative': [
-    #                 "cum_niaf", "cum_rent_exp", "cum_principal_exp",
-    #                 "cum_stock_contrib", "cum_principal_makeup",
-    #             ]
-    #         }
-
-    #         #tuples = [(category, column) for category, columns in column_groups.items() for column in columns]
-    #         #new_column_order = [column for _, column in tuples if column in df.columns]
-
-    #         categories = list(column_groups.keys())
-
-    #         #selected_columns = st.multiselect('Select columns to display:', yearly_df.columns, default=default_cols)
-    #         selected_categories = st.multiselect('Select columns to display:', categories, default=categories)
-            
-    #         selected_columns = [column for category in selected_categories for column in column_groups[category]]
-            
+    #         default_cols = [
+    #             "interest_exp",
+    #             "principal_exp",
+    #             "op_exp",
+    #             "total_exp",
+    #             "adj_total_income",
+    #             "niaf",
+    #             "rent_exp",
+    #             "stock_contrib",
+    #             "home_value",
+    #             "loan_balance",
+    #             "stock_value",
+    #             "cum_niaf",
+    #             "cum_stock_contrib",
+    #             "equity",
+    #             "total_return",
+    #             "coc_roi",
+    #             "roi",
+    #             "total_return_rent",
+    #         ]
+    #         selected_columns = st.multiselect('Select columns to display:', yearly_df.columns, default=default_cols)
     #         round_columns = [x for x in selected_columns if "roi" not in x]
     #         filtered_df = yearly_df[selected_columns]
     #         filtered_df.loc[: ,round_columns] = filtered_df.loc[: ,round_columns].round()

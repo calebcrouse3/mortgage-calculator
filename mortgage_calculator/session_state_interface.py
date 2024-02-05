@@ -39,7 +39,7 @@ class SessionStateInterface:
         self.yr_home_appreciation = create(3.0, rate=True)
         self.yr_insurance_rate = create(0.35, rate=True)
         self.mo_hoa_fees = create(100)
-        self.mo_maintenance = create(100)
+        self.yr_maintenance = create(1.5, rate=True)
         self.yr_inflation_rate = create(3.0, rate=True)
         self.mo_rent_income = create(2000)
         self.mo_other_income = create(100)
@@ -50,9 +50,14 @@ class SessionStateInterface:
         self.paydown_with_profit = create(True)
         self.rent_exp = create(1500)
         self.use_gross_returns = create(False)
-        self.rent_use_gross_returns = create(False)
         self.include_selling_costs = create(True)
+        self.xlim = create(30)
+        self.chart_mode = create("Lines")
 
+        self.stock_tax_rate = create(15.0, rate=True)
+        self.stock_growth_rate = create(7.0, rate=True)
+        self.income_tax_rate = create(25.0, rate=True)
+        self.realtor_rate = create(6.0, rate=True)
 
     @staticmethod
     def counter_generator():
