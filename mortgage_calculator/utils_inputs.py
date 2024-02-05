@@ -6,12 +6,13 @@ def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asteris
         label = ":orange[**]" + label
     
     percent = st.number_input(
-        label=f"{label} (%)", 
-        min_value=min_value, 
-        max_value=max_value, 
+        label=f"{label} (%)",
+        min_value=min_value,
+        max_value=max_value,
         step=step,
         key=key,
-        help=help
+        help=help,
+        on_change=None
     )
     return percent
 
@@ -28,9 +29,10 @@ def dollar_input(label, key=None, min_value=0, max_value=1e8, step=10, asterisk=
         f"{label} ($)",
         min_value=int(min_value), 
         max_value=int(max_value),
-        step=step,
+        step=int(step),
         key=key,
-        help=help
+        help=help,
+        on_change=None
     )
 
 

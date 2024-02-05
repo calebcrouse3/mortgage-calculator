@@ -23,6 +23,7 @@ WIDTH = 700
 # TODO, reference the 5 percent rule in the rent vs own page?
 # TODO, cache yearly df for user?
 # TODO show tooltip that gives the numbers going into the ROI for each bullet point
+# TODO capital gains tax for stock and home selling?
 
 
 CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
@@ -30,21 +31,20 @@ OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
 LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
 MONTHLY_PAYMENT = get_monthly_payment_amount(LOAN_AMOUNT, ss.interest_rate.val)
 
-STOCK_GROWTH_RATE = 0.07
-INCOME_TAX_RATE = 0.25
-REALTOR_RATE = 0.06
-STOCK_TAX_RATE = 0.15
-
+# e6 = million
+# e5 = hundred thousand
+# e4 = ten thousand
+# e3 = thousand
 
 def mortgage_inputs():
     with st.expander("Mortgage", expanded=True):
         populate_columns([
-            lambda: dollar_input("Home Price", ss.home_price.key),
-            lambda: dollar_input("Rehab", ss.rehab.key),
+            lambda: dollar_input("Home Price", ss.home_price.key, min_value=2e4, max_value=10e6, step=2e4),
+            lambda: dollar_input("Rehab", ss.rehab.key, min_value=0, max_value=5e5, step=2e3),
         ], 2)
         populate_columns([
-            lambda: dollar_input("Down Payment", ss.down_payment.key),
-            lambda: rate_input("Interest", ss.interest_rate.key),
+            lambda: dollar_input("Down Payment", ss.down_payment.key, min_value=0, max_value=1e6, step=5e3),
+            lambda: rate_input("Interest Rate", ss.interest_rate.key),
         ], 2)
         populate_columns([
             lambda: rate_input("Closing Costs", ss.closing_costs_rate.key),
@@ -59,11 +59,11 @@ def expenses_inputs():
             lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key),
         ], 2)
         populate_columns([
-            lambda: dollar_input("HOA Fees", ss.mo_hoa_fees.key),
-            lambda: dollar_input("Utilities", ss.mo_utility.key),
+            lambda: dollar_input("Mo. HOA Fees", ss.mo_hoa_fees.key, max_value=1e4, step=50),
+            lambda: dollar_input("Mo. Utilities", ss.mo_utility.key, max_value=1e4, step=50),
         ], 2)
         populate_columns([
-            lambda: rate_input("Yearly Maintenance", ss.yr_maintenance.key),     
+            lambda: rate_input("Maintenance", ss.yr_maintenance.key, help="Yearly maintenance as a percentage of home value"),     
         ], 2)
 
 
@@ -81,8 +81,8 @@ def economic_factors_inputs():
 def rent_income_inputs():
     with st.expander("Rental Income", expanded=False):
         populate_columns([
-            lambda: dollar_input("Monthly Rental Income", ss.mo_rent_income.key),
-            lambda: dollar_input("Monthly Misc Income", ss.mo_other_income.key),
+            lambda: dollar_input("Mo. Rental Income", ss.mo_rent_income.key, max_value=1e5, step=50),
+            lambda: dollar_input("Mo. Misc Income", ss.mo_other_income.key, max_value=1e4, step=50),
         ], 2)
         populate_columns([
             lambda: rate_input("Vacancy Rate", ss.vacancy_rate.key),
@@ -96,15 +96,18 @@ def rent_income_inputs():
 def selling_inputs():
     with st.expander("Selling Fees/Taxes", expanded=False):
         populate_columns([
-            lambda: rate_input("Income Tax Rate", ss.income_tax_rate.key),
+            lambda: rate_input("Income Tax", ss.income_tax_rate.key),
             lambda: rate_input("Realtor Fee", ss.realtor_rate.key),
+        ], 2)
+        populate_columns([
+            lambda: rate_input("Capital Gains Tax", ss.capital_gains_tax_rate.key),
         ], 2)
 
 
 def calculate_inputs():
     populate_columns([
-        lambda: st.button("Reset Values", on_click=ss.clear),
-        lambda: st.button("Calculate"),
+        lambda: st.button("Reset Inputs", on_click=ss.clear),
+        #lambda: st.button("Calculate"),
     ], 2)
 
 
@@ -114,17 +117,10 @@ def hide_text_input():
     ], 1)
 
 
-# def selling_fees_inputs():
-#     populate_columns([
-#         lambda: st.checkbox("Include Selling Taxes/Fees", key=ss.include_selling_costs.key, 
-#             help="Includes realtor fees, income tax, and taxes on stock sales. Will effect returns, equity, and profit to pay down loan."),
-#     ], 1)
-
-
 def chart_inputs():
     with st.expander("Chart Options", expanded=False):
         populate_columns([
-            lambda: st.number_input("Chart xaxis max", min_value=5, max_value=30, step=5, key=ss.xlim.key),
+            lambda: st.number_input("X-axis Max (Years)", min_value=5, max_value=30, step=5, key=ss.xlim.key),
             lambda: st.selectbox("Chart Mode", ["Lines", "Dots"], key=ss.chart_mode.key),
         ], 2)
 
@@ -137,11 +133,8 @@ def returns_inputs():
 
 def rent_returns_inputs():
     populate_columns([
-        lambda: dollar_input("Renting Cost", ss.rent_exp.key, 
+        lambda: dollar_input("Mo. Rent Payment", ss.rent_exp.key, min_value=0, max_value=1e5, step=100,
         help="This is the current monthly rent you would pay instead of buying the home in consideration."),
-    ], 1)
-    populate_columns([
-        lambda: rate_input("Stock Tax Rate", ss.stock_tax_rate.key),
     ], 1)
     populate_columns([
         lambda: rate_input("Stock Growth Rate", ss.stock_growth_rate.key),
@@ -352,7 +345,7 @@ def post_process_sim_df(sim_df):
     year_df["coc_roi"] = year_df["cum_niaf"] / OOP
     year_df["profit"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - CLOSING_COSTS
     year_df["roi"] = year_df["profit"] / OOP
-    year_df["renting_profit"] = year_df["stock_value"] * (1- ss.stock_tax_rate.val) - year_df["cum_rent_exp"]
+    year_df["renting_profit"] = year_df["stock_value"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
 
     return year_df
 
@@ -388,11 +381,12 @@ def get_investment_metrics(df):
     return  {
         "GRM": GRM,
         "Cap Rate": format_percent(df.loc[0, "noi"] / ss.home_price.val),
-        "Mo Cash Flow (NIAF)": format_currency(df.loc[0, "niaf_mo"]),
+        "Year One Cash Flow": format_currency(df.loc[0, "niaf"]),
         "Year One ROI": format_percent(df.loc[0, "roi"]),
         #"Year Ten ROI": format_percent(df.loc[9, "roi"]),
         "1% Rule": f"Yes {formatted_opr}" if opr >= 0.01 else f"No {formatted_opr}",
     }
+
 
 def get_rental_comparison_metrics(df):
     return {
@@ -407,64 +401,14 @@ def get_tab_columns():
 
 
 def run_calculator():
-    local_css("./mortgage_calculator/style.css")
-
-    st.title("Uncompromising Mortgage Calculator")
-
-    if not ss.hide_text.val:
-        with st.expander("Introduction", expanded=True):
-            st.write("""
-                    \tThis is not your fathers mortgage calculator. Its a real estate investment 
-                    tool that runs a month over month simulation accounting for all factors and the 
-                    interplay between them. Expenses, rental income, reinvestment, 
-                    economic factors, taxes and fees, and house hacking are all considered.
-                    Additionaly, you'll find a rent vs own analysis tool that gives a complete view 
-                    of trade offs by accounting for the opportunity cost of capital and potential 
-                    income from your primary residence.""")
-            st.header("Example Use Cases")
-            st.write("""
-                    - What are the short and long term costs of owning a home?
-                    - Should I continue to rent?
-                    - Whats the impact of economic factors like interest rates and home appreciation?
-                    - Is this rental property a good deal?
-                    - Should I pay down my loan with rental profits?
-                    - How much of my mortgage can I offset by house hacking?
-                    """)
-            st.header("Getting Started")
-            st.write("""
-                    - Fill out the fields in sidebar which are ogranized into logical groups. Many inputs are prepopulated with reasonable defaults. 
-                    - Look at tooltips for more information if youre unsure what to do with an input. 
-                    - For in depth details, navigate to the 'About' tab.
-                    """)
-            st.header("Tech Tips")
-            st.write("""
-                    - Hover over charts to see exact values
-                    - Click and drag to zoom in on a particular area 
-                    - Adjust chart settings in the sidebar
-                    - Collapse the sidebar by clicking the x in the top right corner of the sidebar 
-                    - Collapse any box with an up arrow in the corner by click the top of the box
-                    """)
-
-    
-    with st.sidebar:
-        #calculate_inputs()
-        st.markdown("### Input Fields")
-        mortgage_inputs()
-        expenses_inputs()
-        economic_factors_inputs()
-        rent_income_inputs()
-        selling_inputs()
-        #selling_fees_inputs()
-        chart_inputs()
-        # hide_text_input()
-
     yearly_df = post_process_sim_df(run_simulation())
 
     (
         tab_exp, 
         tab_exp_over_time, 
         tab_home_value,
-        tab_returns,
+        tab_roi,
+        tab_profits,
         #tab_net_income, 
         tab_rent_vs_own,
         #data_table,
@@ -473,12 +417,16 @@ def run_calculator():
         "Expenses First Year", 
         "Expenses Over Time", 
         "Home Value",
-        "Returns",
+        "ROI",
+        "Profit",
         #"Net Income",
         "Rent vs Own",
         #"Data Table",
         "About"
     ])
+
+    BLUE = "#1f77b4"
+    ORANGE = "#ff7f0e"
 
     COLOR_MAP = {
         "interest_exp_mo":      "#0068C9",  # Blue
@@ -596,7 +544,7 @@ def run_calculator():
         with col1:
             cols = ["home_value", "equity"]
             names= ["Home Value", "Equity"]
-            colors = ['#1f77b4', '#ff7f0e', '#d62728']
+            colors = [BLUE, ORANGE]
             title = "Home Value   <i>&</i>   Equity"
             plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val, percent=False)
 
@@ -616,28 +564,31 @@ def run_calculator():
     #     with col2:
     #         dict_to_metrics(get_investment_metrics(yearly_df), title="Investment Metrics")
 
-    with tab_returns:
+    with tab_roi:
         col1, col2 = get_tab_columns()
         
         with col1:
-            if ss.use_gross_returns.val:
-                cols = ["profit", "cum_niaf"]
-                names= ["Total Profit (With Equity)", "Total Cash Flow"]
-                colors = ['#d62728', "#ff7f0e"]
-                title = "Total Return (Gross)"
-                plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
-            else:
-                cols = ["roi", "coc_roi"]
-                names= ["ROI", "COC ROI"]
-                colors = ['#1f77b4', '#ff7f0e']
-                title = "Total Return (ROI)"
-                plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=True)
+            cols = ["roi", "coc_roi"]
+            names= ["ROI", "Cash on Cash ROI"]
+            colors = [BLUE, ORANGE]
+            title = "Return on Investment (ROI)"
+            plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=True)
 
         with col2:
             dict_to_metrics(get_investment_metrics(yearly_df))
-            st.container(height=20, border=False)
-            st.write(":red[Additional Options]")
-            returns_inputs()
+
+
+    with tab_profits:
+        col1, col2 = get_tab_columns()
+        
+        with col1:
+            cols = ["profit", "cum_niaf"]
+            names= ["Total Profit (With Equity)", "Total Cash"]
+            colors = [BLUE, ORANGE]
+            title = "Investment Profit/Loss"
+            plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+        with col2:
+            dict_to_metrics(get_investment_metrics(yearly_df))
 
     with tab_rent_vs_own:
         with st.expander("Rent vs Own", expanded=True):
@@ -657,8 +608,8 @@ def run_calculator():
         with col1:
             cols = ["profit", "renting_profit"]
             names= ["Own", "Rent"]
-            colors = ['#d62728', '#ff7f0e']
-            title = "Rent vs Own Total Net Cost"
+            colors = [BLUE, ORANGE]
+            title = "Rent vs Own Profit/Loss"
             plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
 
         with col2:
@@ -695,6 +646,69 @@ def run_calculator():
     #         st.dataframe(filtered_df, use_container_width=True)
 
     with about:
-        st.write("More to come!")
+        st.write("Made you look")
 
-run_calculator()
+
+
+def display_inputs():
+    local_css("./mortgage_calculator/style.css")
+
+    st.title("Uncompromising Mortgage Calculator")
+
+    if not ss.hide_text.val:
+        with st.expander("Introduction", expanded=True):
+            st.write("""
+                    Not your fathers mortgage calculator. This tools runs a month over month 
+                    simulation accounting for all factors and the 
+                    interplay between them. Expenses, rental income, reinvestment, 
+                    growth rates, taxes and fees, opportunity costs, and house hacking are all 
+                    considered.""")
+            st.header("Example Use Cases")
+            st.write("""
+                    - What are the short and long term costs of owning a home?
+                    - Is this rental property a good deal?
+                    - Should I rent or buy for my primary residence?
+                    - Should I pay down my loan with rental profits?
+                    - How much of my mortgage can I offset by house hacking?
+                    """)
+            st.header("Getting Started")
+            st.write("""
+                    - Fill out the fields in sidebar. They are ogranized into logical groups. Many inputs are prepopulated with reasonable defaults.
+                    - Start by adding a home price and down payment. If youre going to rent out any part of this property, fill out the fields in the rental income exapnder.
+                    - Click across the tabs to see different charts and metrics. 
+                    - Some tabs are straightforward and some might require familiazing yourself with certain concepts which you can explore in the 'About' tab. 
+                    - Look at tooltips for more information if youre unsure what to do with an input. 
+                    - For more in depth details, navigate to the 'About' tab.
+                    """)
+            st.header("Tech Tips")
+            st.write("""
+                    - Hover over charts to see exact values
+                    - Click and drag to zoom in on a particular area 
+                    - Adjust chart settings in the sidebar under the chart options expander
+                    - Collapse the sidebar by clicking the x in the top right corner of the sidebar 
+                    - Expanders have a ^ in the top corner of the box and can be collapsed by clicking the top of the box
+                    """)
+
+    with st.sidebar:
+        #run_it = st.button("Calculate")
+        calculate_inputs()
+        st.markdown("### Input Fields")
+        mortgage_inputs()
+        expenses_inputs()
+        economic_factors_inputs()
+        rent_income_inputs()
+        selling_inputs()
+        #selling_fees_inputs()
+        chart_inputs()
+        # hide_text_input()
+    
+    #if run_it:
+    run_calculator()
+    #else:
+    #    st.write("need to display stuff")
+
+    # display previous stuff?
+
+
+
+display_inputs()

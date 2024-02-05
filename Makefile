@@ -1,8 +1,8 @@
 run:
 	@poetry run streamlit run mortgage_calculator/calculator.py
 
-run-plus:
-	@poetry run streamlit run mortgage_calculator/test_calculator.py
+run-sandbox:
+	@poetry run streamlit run mortgage_calculator/sandbox.py
 
 test:
 	@poetry run pytest tests/test_utils_finance.py
