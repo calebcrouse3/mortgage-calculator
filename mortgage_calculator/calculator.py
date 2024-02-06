@@ -325,6 +325,7 @@ def post_process_sim_df(sim_df):
     year_df["profit"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - CLOSING_COSTS
     year_df["roi"] = year_df["profit"] / OOP
     year_df["renting_profit"] = year_df["stock_value"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
+    year_df["ownership_upside"] = year_df["profit"] - year_df["renting_profit"]
 
     return year_df
 
@@ -363,7 +364,7 @@ def get_investment_metrics(df):
 def get_rental_comparison_metrics(df):
     return {
         "One Year Ownership Upside": format_currency(df.loc[0, "profit"] - df.loc[0, "renting_profit"]),
-        "Five Year Ownership Upside": format_currency(df.loc[9, "profit"] - df.loc[9, "renting_profit"]),
+        "Ten Year Ownership Upside": format_currency(df.loc[9, "profit"] - df.loc[9, "renting_profit"]),
     }
 
 
@@ -378,6 +379,7 @@ def run_calculator():
         tab_profits,
         #tab_net_income, 
         tab_rent_vs_own,
+        tab_rent_vs_own_delta,
         #data_table,
         about
     ) = st.tabs([ 
@@ -388,6 +390,7 @@ def run_calculator():
         "Profit",
         #"Net Income",
         "Rent vs Own",
+        "Rent vs Own Delta",
         #"Data Table",
         "About"
     ])
@@ -584,6 +587,20 @@ def run_calculator():
             st.container(height=20, border=False)
             st.write(":red[Additional Options]")
             rent_vs_own_inputs()
+
+
+    with tab_rent_vs_own_delta:
+        col1, col2 = get_tab_columns()
+        
+        with col1:
+            cols = ["ownership_upside"]
+            names= ["Ownership Upside"]
+            colors = [BLUE]
+            title = "Home Ownership Upside Over Renting"
+            plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+        with col2:
+            dict_to_metrics(get_rental_comparison_metrics(yearly_df))
+
 
     # with data_table:
     #         default_cols = [

@@ -11,8 +11,8 @@
 - Specifics of capital gains and how it effects stock and home sale price
     - The 2 year window for capital gains tax free sale
 - Opportunity cost and savings of extra payments or using profit to pay down principle
-- Rent vs Own delta chart with crossover point
-- Reccomendations for rent vs own. 5 percent rule?
+- Actual formula for renting vs ownership - reccomendations for rent vs own. 5 percent rule?
+    - Based on the home, give the rental that will have the correct crossover point
 - You need to make this much rental income to do 'X'
 - Total returns versus downpayment analysis
 
