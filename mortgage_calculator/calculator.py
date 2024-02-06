@@ -16,11 +16,6 @@ ss = SessionStateInterface()
 HEIGHT = 700
 WIDTH = 700
 
-CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
-OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
-LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
-MONTHLY_PAYMENT = get_amortization_payment(LOAN_AMOUNT, ss.interest_rate.val)
-
 # e6 = million
 # e5 = hundred thousand
 # e4 = ten thousand
@@ -79,9 +74,9 @@ def rent_income_inputs():
             lambda: rate_input("Vacancy Rate", ss.vacancy_rate.key),
             lambda: rate_input("Management Fee", ss.management_rate.key),
         ], 2)
-        populate_columns([
-            lambda: st.checkbox("Paydown Loan with Profit", key=ss.paydown_with_profit.key),
-        ], 2)
+        # populate_columns([
+        #     lambda: st.checkbox("Paydown Loan with Profit", key=ss.paydown_with_profit.key),
+        # ], 2)
 
 
 def selling_inputs():
@@ -95,14 +90,14 @@ def selling_inputs():
         ], 2)
 
 
-def calculate_inputs():
+def reset_inputs():
     populate_columns([
         lambda: st.button("Reset Inputs", on_click=ss.clear),
         #lambda: st.button("Calculate"),
     ], 2)
 
 
-def chart_inputs():
+def chart_disaply_inputs():
     with st.expander("Chart Options", expanded=False):
         populate_columns([
             lambda: st.number_input("X-axis Max (Years)", min_value=5, max_value=30, step=5, key=ss.xlim.key),
@@ -120,7 +115,16 @@ def rent_vs_own_inputs():
     ], 1)
 
 
-def run_simulation():
+def extra_payment_inputs():
+    populate_columns([
+        lambda: dollar_input("Mo. Payment Amount", ss.mo_extra_payment.key),
+        lambda: dollar_input("Number of Payments", ss.num_extra_payments.key),
+    ], 2)
+
+
+
+
+def get_monthly_sim_df(oop, loan_amount, monthly_payment, paydown_with_profit=False, extra_payments=False):
     """
     Simulation iterates over months. Each row corresponds to the total costs paid for a particular
     expenses over the month, or the value of an asset at the end of the month. Row 0 corresponds to
@@ -131,7 +135,7 @@ def run_simulation():
     #      initialize, updated yearly                                      #
     ########################################################################
     
-    pmi_price = get_monthly_pmi(ss.home_price.val, LOAN_AMOUNT, ss.pmi_rate.val, ss.home_price.val)
+    pmi_price = get_monthly_pmi(ss.home_price.val, loan_amount, ss.pmi_rate.val, ss.home_price.val)
     property_tax_exp = ss.home_price.val * ss.yr_property_tax_rate.val / 12
     insurance_exp = ss.home_price.val * ss.yr_insurance_rate.val / 12
     maintenance_exp = ss.home_price.val * ss.yr_maintenance.val / 12
@@ -146,10 +150,15 @@ def run_simulation():
     #      initialize, updated monthly                                     #
     ########################################################################
     
-    loan_balance = LOAN_AMOUNT
+    loan_balance = loan_amount
     home_value = ss.home_price.val
     pmi_required = pmi_price > 0
-    stock_value = OOP
+
+    # Stock portfolio comparisons
+    total_expense_portfolio = oop # portfolio funded with all homeownership expenses
+    rent_comparison_portfolio = oop # portfolio funded with money saved from renting
+    reinvest_portfolio = 0 # portfolio funded with all positive cash flow
+    extra_payments_portfolio = 0 # portfolio funded with extra payments
 
 
     data = []
@@ -158,11 +167,27 @@ def run_simulation():
         interest_exp = loan_balance * ss.interest_rate.val / 12
 
         # if youre ahead on payments, you cant pay more principal than the loan balance
-        principal_exp = MONTHLY_PAYMENT - interest_exp
+        principal_exp = monthly_payment - interest_exp
         if principal_exp >= loan_balance:
             principal_exp = loan_balance
 
         loan_balance -= principal_exp
+
+        # optionally make extra payments
+        extra_payments_portfolio = add_growth(extra_payments_portfolio, ss.stock_growth_rate.val, months=1)
+        # either make extra payments or add to portfolio
+        if extra_payments:
+            if month < ss.num_extra_payments.val:
+                if loan_balance < ss.num_extra_payments.val:
+                    loan_balance = 0
+                else:
+                    loan_balance -= ss.mo_extra_payment.val
+        else:
+            if month < ss.num_extra_payments.val:
+                if loan_balance < ss.num_extra_payments.val:
+                    extra_payments_portfolio += loan_balance
+                else:
+                    extra_payments_portfolio += ss.mo_extra_payment.val
 
         # pay pmi if required
         pmi_exp = 0
@@ -185,9 +210,12 @@ def run_simulation():
         noi = adj_total_income - op_exp
         niaf = adj_total_income - total_exp
 
-        # optionally use niaf to pay down loan
-        if niaf > 0 and ss.paydown_with_profit.val:
+        # apply income tax to profits
+        if niaf > 0:
             niaf *= (1 - ss.income_tax_rate.val)
+
+        # optionally use niaf to pay down loan
+        if niaf > 0 and paydown_with_profit:
             if niaf > loan_balance:
                 loan_balance = 0
             else:
@@ -198,12 +226,17 @@ def run_simulation():
         pmi_required = true_pmi > 0
 
         home_value = add_growth(home_value, ss.yr_home_appreciation.val, months=1)
-        stock_value = add_growth(stock_value, ss.stock_growth_rate.val, months=1)
-        stock_contrib = 0
-        if total_exp > rent_exp:
-            stock_value += total_exp - rent_exp
-            stock_contrib = total_exp - rent_exp
+        rent_comparison_portfolio = add_growth(rent_comparison_portfolio, ss.stock_growth_rate.val, months=1)
 
+        # contribute to portfolio is money saved from renting
+        if total_exp > rent_exp:
+            rent_comparison_portfolio += total_exp - rent_exp
+
+        # profit reinvestment stock portfolio
+        # since sim represent end of month, always grow first then add contribution
+        reinvest_portfolio = add_growth(reinvest_portfolio, ss.stock_growth_rate.val, months=1)
+        if niaf > 0:
+            reinvest_portfolio += niaf
 
         month_data = {
             "index": month,
@@ -228,11 +261,12 @@ def run_simulation():
             "noi": noi,
             "niaf": niaf,
             "rent_exp": rent_exp,
-            "stock_contrib": stock_contrib,
             # Balances and values. End of month.
             "loan_balance": loan_balance,
             "home_value": home_value,
-            "stock_value": stock_value,
+            "rent_comparison_portfolio": rent_comparison_portfolio,
+            "reinvest_portfolio": reinvest_portfolio,
+            "extra_payments_portfolio": extra_payments_portfolio
         }
         data.append(month_data)
 
@@ -252,7 +286,7 @@ def run_simulation():
     return pd.DataFrame(data).set_index("index")
 
 
-def post_process_sim_df(sim_df):
+def get_yearly_agg_df(sim_df, oop, closing_costs):
     """
     After running the simulation, we want to aggregate the data to a yearly level for easier
     analysis and visualization. This function also calculates some derived metrics for plotting.
@@ -277,8 +311,7 @@ def post_process_sim_df(sim_df):
             "adj_total_income",
             "noi",
             "niaf",
-            "rent_exp",
-            "stock_contrib"
+            "rent_exp"
     ]
 
     agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
@@ -286,7 +319,9 @@ def post_process_sim_df(sim_df):
     agg_dict.update({
         "home_value": 'max', # end of year is max
         "loan_balance": 'min', # end of year is min
-        "stock_value": 'max'
+        "rent_comparison_portfolio": 'max',
+        "reinvest_portfolio": 'max',
+        "extra_payments_portfolio": 'max'
     })
 
     year_df = sim_df.groupby("year").agg(agg_dict)
@@ -295,7 +330,9 @@ def post_process_sim_df(sim_df):
     year_df.rename(columns={
         "home_value_max": "home_value",
         "loan_balance_min": "loan_balance",
-        "stock_value_max": "stock_value"
+        "rent_comparison_portfolio_max": "rent_comparison_portfolio",
+        "reinvest_portfolio_max": "reinvest_portfolio",
+        "extra_payments_portfolio_max": "extra_payments_portfolio"
     }, inplace=True)
 
     def rename_columns(df):
@@ -311,41 +348,56 @@ def post_process_sim_df(sim_df):
         df.rename(columns=new_columns, inplace=True)
 
     rename_columns(year_df)
+
+    # get the niaf for any months that were a loss. For the reinvestment analysis
+    year_df["niaf_neg"] = year_df["niaf"].apply(lambda x: x if x < 0 else 0)
     
     cumsum_cols = [
         "niaf",
+        "niaf_neg",
         "rent_exp",
+        "interest_exp",
     ]
 
     for col in cumsum_cols:
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
     year_df["equity"] = year_df["home_value"] * (1 - ss.realtor_rate.val) - year_df["loan_balance"] 
-    year_df["coc_roi"] = year_df["cum_niaf"] / OOP
-    year_df["profit"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - CLOSING_COSTS
-    year_df["roi"] = year_df["profit"] / OOP
-    year_df["renting_profit"] = year_df["stock_value"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
+    year_df["coc_roi"] = year_df["cum_niaf"] / oop
+    year_df["profit"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - closing_costs
+    year_df["roi"] = year_df["profit"] / oop
+    year_df["renting_profit"] = year_df["rent_comparison_portfolio"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
     year_df["ownership_upside"] = year_df["profit"] - year_df["renting_profit"]
+
+    # metrics for reinvestment analysis
+    year_df["profit_reinvest"] = (
+        year_df["reinvest_portfolio"] * (1 - ss.capital_gains_tax_rate.val)
+        + year_df["equity"] 
+        + year_df["cum_niaf_neg"]
+        - ss.rehab.val
+        - closing_costs
+    )
 
     return year_df
 
 
-def get_mortgage_metrics(df):
+def get_mortgage_metrics(df, oop, loan_amount, closing_costs):
     return {
         #"Down Payment": format_currency(ss.down_payment.val),
         #"Rehab": format_currency(ss.rehab.val),
-        #"Closing Costs": format_currency(CLOSING_COSTS),
-        "Cash Outlay": format_currency(OOP),
-        "Loan Amount": format_currency(LOAN_AMOUNT),
-        "Total Interest Paid": format_currency(df["interest_exp"].sum()),
+        #"Closing Costs": format_currency(closing_costs),
+        "Cash Outlay": format_currency(oop),
+        "Loan Amount": format_currency(loan_amount),
         "Total PMI Paid": format_currency(df["pmi_exp"].sum()),
         "Total Taxes Paid": format_currency(df["property_tax_exp"].sum()),
+        "Total Interest Paid": format_currency(df["interest_exp"].sum()),
+        "Default Interest Paid": format_currency(get_total_interest_paid(loan_amount, ss.interest_rate.val)),
     }
 
 
-def get_investment_metrics(df):
+def get_investment_metrics(df, oop):
     # opr_metrics. Monthly income / OOP
-    opr = df.loc[0, "rent_income_mo"] / OOP
+    opr = df.loc[0, "rent_income_mo"] / oop
     formatted_opr = format_percent(opr)
 
     GRM = 0 
@@ -361,23 +413,55 @@ def get_investment_metrics(df):
     }
 
 
-def get_rental_comparison_metrics(df):
+def get_rent_vs_own_metrics(df):
     return {
         "One Year Ownership Upside": format_currency(df.loc[0, "profit"] - df.loc[0, "renting_profit"]),
         "Ten Year Ownership Upside": format_currency(df.loc[9, "profit"] - df.loc[9, "renting_profit"]),
     }
 
 
-def run_calculator():
-    yearly_df = post_process_sim_df(run_simulation())
+def get_all_simulation_data(include_metrics=True, paydown_with_profit=False, extra_payments=False):
+    CLOSING_COSTS = ss.home_price.val * ss.closing_costs_rate.val
+    OOP = CLOSING_COSTS + ss.down_payment.val + ss.rehab.val
+    LOAN_AMOUNT = ss.home_price.val - ss.down_payment.val
+    MONTHLY_PAYMENT = get_amortization_payment(LOAN_AMOUNT, ss.interest_rate.val)
+
+    monthly_df = get_monthly_sim_df(OOP, LOAN_AMOUNT, MONTHLY_PAYMENT, paydown_with_profit, extra_payments)
+    yearly_df = get_yearly_agg_df(monthly_df, OOP, CLOSING_COSTS)
+
+    mortgage_metrics = get_mortgage_metrics(yearly_df, OOP, LOAN_AMOUNT, CLOSING_COSTS)
+    investment_metrics = get_investment_metrics(yearly_df, OOP)
+    rental_comparison_metrics = get_rent_vs_own_metrics(yearly_df)
+
+    results = {
+        "yearly_df": yearly_df,
+    }
+
+    if include_metrics:
+        results.update({
+            "mortgage_metrics": mortgage_metrics,
+            "investment_metrics": investment_metrics,
+            "rental_comparison_metrics": rental_comparison_metrics,
+        })
+
+    return results
+
+
+
+def calculate_and_display():
+    results = get_all_simulation_data()
+
+    yearly_df = results["yearly_df"]
 
     (
-        tab_exp, 
+        tab_exp,
         tab_exp_over_time, 
         tab_home_value,
+        tab_extra_payment,
         tab_roi,
         tab_profits,
-        #tab_net_income, 
+        tab_reinvest_analysis,
+        tab_net_income,
         tab_rent_vs_own,
         tab_rent_vs_own_delta,
         #data_table,
@@ -386,9 +470,11 @@ def run_calculator():
         "Expenses First Year", 
         "Expenses Over Time", 
         "Home Value",
+        "Extra Payment Analysis",
         "ROI",
         "Profit",
-        #"Net Income",
+        "Reinvestment Analysis",
+        "Net Income",
         "Rent vs Own",
         "Rent vs Own Delta",
         #"Data Table",
@@ -457,7 +543,7 @@ def run_calculator():
             fig_display(fig)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df))
+            dict_to_metrics(results["mortgage_metrics"])
 
 
     with tab_exp_over_time:
@@ -505,7 +591,7 @@ def run_calculator():
             fig_display(fig)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df))
+            dict_to_metrics(results["mortgage_metrics"])
 
 
     with tab_home_value:
@@ -519,20 +605,42 @@ def run_calculator():
             plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val, percent=False)
 
         with col2:
-            dict_to_metrics(get_mortgage_metrics(yearly_df))
+            dict_to_metrics(results["mortgage_metrics"])
 
-    # with tab_net_income:
-    #     col1, col2 = get_tab_columns()
+    with tab_extra_payment:
+        extra_payment_inputs()
+
+        # want to know if extra payments are worth it versus just putting that money in the stock market
+        # but also want to know how much extra profit is made over time by putting in extra payments
+
+        # regular results doesnt have extra payments but will add extra payment amount to portfolio
+        yearly_df["profit_with_extra_payment_portfolio"] = yearly_df["profit"] + yearly_df["extra_payments_portfolio"]
         
-    #     # add monthly vs yearly toggle?
-    #     with col1:
-    #         cols = ["noi_mo", "niaf_mo"]
-    #         names= ["Monthly NOI", "Monthly NIAF"]
-    #         colors = ['#1f77b4', '#ff7f0e']
-    #         title = "Monthly Net Income"
-    #         plot_dots(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
-    #     with col2:
-    #         dict_to_metrics(get_investment_metrics(yearly_df), title="Investment Metrics")
+        # get profit with extra payments
+        alt_results = get_all_simulation_data(include_metrics=False, paydown_with_profit=False, extra_payments=True)
+        alt_results["yearly_df"]["profit_with_extra_payment"] = alt_results["yearly_df"]["profit"]
+
+        yearly_df = yearly_df.join(alt_results["yearly_df"][["profit_with_extra_payment"]], how="left")
+
+        cols = ["profit_with_extra_payment_portfolio", "profit_with_extra_payment"]
+        names= ["Profit with Extra Payments Portfolio", "Profit With Extra Payments"]
+        colors = ['#1f77b4', '#ff7f0e']
+        title = "Extra Payments Analysis"
+        plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+
+
+    with tab_net_income:
+        col1, col2 = get_tab_columns()
+        
+        # add monthly vs yearly toggle?
+        with col1:
+            cols = ["noi_mo", "niaf_mo"]
+            names= ["Monthly NOI", "Monthly NIAF"]
+            colors = ['#1f77b4', '#ff7f0e']
+            title = "Monthly Net Income"
+            plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+        with col2:
+            dict_to_metrics(results["investment_metrics"])
 
     with tab_roi:
         col1, col2 = get_tab_columns()
@@ -545,7 +653,7 @@ def run_calculator():
             plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=True)
 
         with col2:
-            dict_to_metrics(get_investment_metrics(yearly_df))
+            dict_to_metrics(results["investment_metrics"])
 
 
     with tab_profits:
@@ -558,7 +666,39 @@ def run_calculator():
             title = "Investment Profit/Loss"
             plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
         with col2:
-            dict_to_metrics(get_investment_metrics(yearly_df))
+            dict_to_metrics(results["investment_metrics"])
+
+
+
+    with tab_reinvest_analysis:
+        # need total profit for reinvestmenr
+        # need total profit and reinvest stock value for
+
+        # TODO Need to run it again with reinvestment and plot total profit
+        alt_results = get_all_simulation_data(include_metrics=False, paydown_with_profit=True)
+
+        paydown_with_profit = alt_results["yearly_df"].rename(columns={"profit": "profit_with_paydown"})
+        paydown_with_profit = paydown_with_profit[["profit_with_paydown"]]
+        
+        # join paydown with profit to yearly_df on the df index
+        yearly_df = yearly_df.join(paydown_with_profit, how="left")
+
+        # get difference between regular profit and other options
+        yearly_df["profit_reinvest_delta"] = yearly_df["profit_reinvest"] - yearly_df["profit"]
+        yearly_df["profit_with_paydown_delta"] = yearly_df["profit_with_paydown"] - yearly_df["profit"]
+
+        col1, col2 = get_tab_columns()
+        
+        with col1:
+            pass
+            cols = ["profit_reinvest_delta", "profit_with_paydown_delta"]
+            names= ["Invest Cash in Stock Market", "Use Cash to Pay Down Loan"]
+            colors = [BLUE, ORANGE, "green", "purple", "red"]
+            title = "Extra Profit from Cash Flow Reinvestment"
+            plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
+        with col2:
+            dict_to_metrics(results["investment_metrics"]) 
+
 
     with tab_rent_vs_own:
         with st.expander("Rent vs Own", expanded=True):
@@ -583,7 +723,7 @@ def run_calculator():
             plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
 
         with col2:
-            dict_to_metrics(get_rental_comparison_metrics(yearly_df))
+            dict_to_metrics(results["rental_comparison_metrics"])
             st.container(height=20, border=False)
             st.write(":red[Additional Options]")
             rent_vs_own_inputs()
@@ -599,7 +739,7 @@ def run_calculator():
             title = "Home Ownership Upside Over Renting"
             plot_data(yearly_df, cols, names, colors, title, HEIGHT, WIDTH, ss.xlim.val, mode=ss.chart_mode.val,percent=False)
         with col2:
-            dict_to_metrics(get_rental_comparison_metrics(yearly_df))
+            dict_to_metrics(results["rental_comparison_metrics"])
 
 
     # with data_table:
@@ -634,7 +774,7 @@ def run_calculator():
 
 
 
-def display_inputs():
+def main():
     local_css("./mortgage_calculator/style.css")
 
     st.title("Uncompromising Mortgage Calculator")
@@ -674,16 +814,16 @@ def display_inputs():
 
     with st.sidebar:
         #run_it = st.button("Calculate")
-        calculate_inputs()
+        reset_inputs()
         st.markdown("### Input Fields")
         mortgage_inputs()
         expenses_inputs()
         economic_factors_inputs()
         rent_income_inputs()
         selling_inputs()
-        chart_inputs()
+        chart_disaply_inputs()
 
-    run_calculator()
+    calculate_and_display()
 
 
-display_inputs()
+main()

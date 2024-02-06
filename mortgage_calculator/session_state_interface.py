@@ -53,6 +53,10 @@ class SessionStateInterface:
         self.income_tax_rate = create(25.0, rate=True)
         self.realtor_rate = create(6.0, rate=True)
 
+        self.mo_extra_payment = create(0)
+        self.num_extra_payments = create(0)
+
+
     # Define counter_generator as a static method so it can be called without an instance
     @staticmethod
     def counter_generator():
