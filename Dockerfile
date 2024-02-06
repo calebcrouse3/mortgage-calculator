@@ -13,5 +13,4 @@ RUN poetry config virtualenvs.create false && poetry install --no-dev --no-inter
 
 EXPOSE 8501
 
-# "--server.port=8501", "--server.address=0.0.0.0"
 ENTRYPOINT ["poetry", "run", "streamlit", "run", "mortgage_calculator/calculator.py"]

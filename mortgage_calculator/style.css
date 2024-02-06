@@ -26,19 +26,16 @@ button[title="View fullscreen"]{
     display: none;
 }
 
-/* div[data-testid="stExpander"] {
+/* 
+div[data-testid="stExpander"] {
     background-color: rgba(68, 68, 68, 0.334);
     color: white;
-} */
+}
 
-
-/*
 [data-testid="tooltipHoverTarget"] svg { 
     fill: white;
 }
-*/
 
-/*
 [data-testid="stMetric"] > div { 
     width: fit-content; 
     margin: auto; 

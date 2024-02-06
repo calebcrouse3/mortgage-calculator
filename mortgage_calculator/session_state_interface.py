@@ -23,12 +23,9 @@ class SessionStateInterface:
         self.counter = self.counter_generator()
 
         def create(val, rate=False):
-            # Use next(self.counter) to get the next value from the generator
             key = f"state_item_{next(self.counter)}"
             return StateItem(val, key, rate)
 
-        # Define counter_generator as a static method so it can be called without an instance
-        self.hide_text = create(False)
         self.home_price = create(300000)
         self.rehab = create(1000)
         self.down_payment = create(50000)
@@ -49,16 +46,14 @@ class SessionStateInterface:
         self.vacancy_rate = create(5.0, rate=True)
         self.paydown_with_profit = create(False)
         self.rent_exp = create(1500)
-        self.use_gross_returns = create(False)
-        #self.include_selling_costs = create(True)
         self.xlim = create(30)
         self.chart_mode = create("Lines")
-
         self.capital_gains_tax_rate = create(15.0, rate=True)
         self.stock_growth_rate = create(7.0, rate=True)
         self.income_tax_rate = create(25.0, rate=True)
         self.realtor_rate = create(6.0, rate=True)
 
+    # Define counter_generator as a static method so it can be called without an instance
     @staticmethod
     def counter_generator():
         counter = 0

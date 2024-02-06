@@ -9,12 +9,12 @@ class TestFinancialFunctions(unittest.TestCase):
         interest_rate = 0.07
 
         years = 30
-        monthly_payment = get_monthly_payment_amount(loan_amount, interest_rate, years)
+        monthly_payment = get_amortization_payment(loan_amount, interest_rate, years)
         expected_payment = 665.302
         self.assertAlmostEqual(monthly_payment, expected_payment, places=2)
 
         years = 15
-        monthly_payment = get_monthly_payment_amount(loan_amount, interest_rate, years)
+        monthly_payment = get_amortization_payment(loan_amount, interest_rate, years)
         expected_payment = 898.828
         self.assertAlmostEqual(monthly_payment, expected_payment, places=2)
 

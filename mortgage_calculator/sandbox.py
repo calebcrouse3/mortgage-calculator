@@ -1,22 +1,8 @@
-from math import *
+"""
+Sandbox space for playing around with Streamlit
+"""
 
 import streamlit as st
-import numpy as np
-import pandas as pd
-import plotly.graph_objs as go
-
-from utils import *
-from utils_finance import *
-from st_text import *
-from utils_inputs import *
-
-from session_state_interface import SessionStateInterface
-
-
-import streamlit as st
-
-# initialize sessions state
-# create input fields linked to session state
 
 # Initialize session state for inputs if not already done
 if 'input_1' not in st.session_state:

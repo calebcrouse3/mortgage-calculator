@@ -1,56 +1,52 @@
-A better mortgage calculator
+# TODO
 
-### TODO
-- Tooltips
-- Extra Payments Graph
-- Switch to light theme
-- ICB Ads
-- Fix get_metrics function
-- Revisit Insurance Estimation
-- Not subtracting rental income correctly I dont think.
-- Make chart yaxis horizontal
-- EDA for rental comps home price comparison
-- QA monthly and yearly df for all values
-- Double check that X-axis for graphs correspond to correct data
-- Verify Rental Comparison Setup is correct
-- Run simulation button
-- Keep selected lines in plotly as session state
-- Auto increment session state key values
-- Better summary
-- Charts Charts Chart
-- Metrics Metrics Metrics
-- Call out highlights when they are display. The metrics. Say something like "highlights"
-- Make format of highlights the same as summary for consistency
-- Make a tips sections for navigating the calculator
-- Give leads on each tab of questions this can help answer
-- Use annotations on the charts instead of at the top
-- Hide boarder box on expander and move arrow next to text
+- Tooltips with hover over and no (?)
+- ICB ads
+- Extra payments input/graph
+- Insurance default value / estimation
+- Calculate button
+- Save selected chart lines to session state
+- About page
+- Chart hover over so red or green for profit or loss
+- Specifics of capital gains and how it effects stock and home sale price
+    - The 2 year window for capital gains tax free sale
+- Opportunity cost and savings of extra payments or using profit to pay down principle
+- Rent vs Own delta chart with crossover point
+- Reccomendations for rent vs own. 5 percent rule?
+- You need to make this much rental income to do 'X'
+- Total returns versus downpayment analysis
 
-### Tech Notes
+
+# Deployment
+Steps
+- `make build`
+- test container with `make run-docker`
+- `make tar`
+- Open peotry shell with `poetry shell`
+- `cd ./cdk`
+- `cdk synth` to check synthesis into cloud formation
+- `cdk diff` to make sure there are changes to be pushed
+- `cdk deploy`
+
 Had to forward from app.mortgage-calculator to load balancer domain in aws console.
 
-### Mortgage Notes
-Does inflation drive insurance increase, rental increase, HOA increase, etc?
-Median growth in ppsf might be better than median home sale price because it corrects for size of homes
+# Mortgage Notes
+- What expense increases does inflation drive?
+- Median growth in ppsf might be better for historical analysis than median home sale price because it corrects for size of homes
 
-### Backlog Ideas
-- home/stock selling Costs
+# Backlog Ideas
 - Event Injector
-- Make a page that asks various questions and shows how the calculator can answer them
-    - impact of interest rates
-    - Should I make additional payments
-    - What factors matters most
+- Make educational tutorial videos?
+    - Impact of interest rates
+    - Additional payments
     - Does PMI matter
     - Renting versus Buying
     - How to house hack
-    - How to assess a property
+    - How to evaluate a rental
     - etc.
-- Download report
-- Save simulation
+- Download printable report
+- Save simulation inputs
+- Upload previous simulation inputs
 - Zillow link
-
-### Data points to supply from regional lookup
-- Median home price
-- Median ppsf
-- Median rent price across different property types
-- Median rent ppsf
+- Refinancing calculator
+- Market analysis using open source data indicators
