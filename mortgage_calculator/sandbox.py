@@ -1,29 +1,19 @@
-"""
-Sandbox space for playing around with Streamlit
-"""
+from math import *
 
 import streamlit as st
+import numpy as np
+import pandas as pd
+import plotly.graph_objs as go
 
-# Initialize session state for inputs if not already done
-if 'input_1' not in st.session_state:
-    st.session_state['input_1'] = 0  # Default value
-if 'input_2' not in st.session_state:
-    st.session_state['input_2'] = 0  # Default value
+from utils import *
+from utils_finance import *
+from session_state_interface import SessionStateInterface
 
-# Input fields
-input_1 = st.number_input('Input 1', key='input_1')
-input_2 = st.number_input('Input 2', key='input_2')
-
-
-# Function to run when calculate button is pressed
-def calculate():
-    # Here, you would use the values stored in the session state for computation
-    result = st.session_state['input_1'] + st.session_state['input_2']
-    st.write(f"Result: {result}")
-
-def main():
-    # Calculate button
-    if st.button('Calculate'):
-        calculate()
-
-main()
+def merge_simulations(sim_df_a, sim_df_b, append_cols, prefix):
+        """
+        Sim df A keeps all it columns
+        Sim df B keeps the merge columns with a prefix and is joined to sim df A on index
+        """
+        sim_df_b = sim_df_b[append_cols]
+        sim_df_b = sim_df_b.rename(columns={col: f"{prefix}_{col}" for col in append_cols})
+        return sim_df_a.join(sim_df_b)

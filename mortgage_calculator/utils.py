@@ -1,6 +1,24 @@
 import streamlit as st
 import plotly.graph_objs as go
 
+HEIGHT = 700
+WIDTH = 800
+
+BLUE = "#1f77b4"
+ORANGE = "#ff7f0e"
+
+PLOT_COLORS = [BLUE, ORANGE]
+
+
+def merge_simulations(sim_df_a, sim_df_b, append_cols, prefix):
+        """
+        Sim df A keeps all it columns
+        Sim df B keeps the merge columns with a prefix and is joined to sim df A on index
+        """
+        sim_df_b = sim_df_b[append_cols]
+        sim_df_b = sim_df_b.rename(columns={col: f"{prefix}_{col}" for col in append_cols})
+        return sim_df_a.join(sim_df_b)
+
 
 def local_css(file_name):
     with open(file_name) as f:
@@ -15,7 +33,7 @@ def dict_to_metrics(data_dict):
 
 def get_tab_columns():
     col1, _, col2 =  st.columns([1, .5, 5])
-    return col2, col1
+    return col1, col2
 
 
 ###########################################################
@@ -99,7 +117,7 @@ def fig_display(fig, use_container_width=False):
     st.plotly_chart(fig, config={'displayModeBar': False}, use_container_width=use_container_width)
 
 
-def plot_data(yearly_df, cols, names, colors, title, height, width, xlim, mode, percent=False):
+def plot_data(yearly_df, cols, names, title, xlim, mode, percent=False, height=HEIGHT, width=WIDTH, colors=PLOT_COLORS):
     hovertemplate = '$%{y:,.0f}'
     if percent:
         hovertemplate = '%{y:.1%}'  # Formats y as a percentage
