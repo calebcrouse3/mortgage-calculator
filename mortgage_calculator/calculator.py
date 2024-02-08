@@ -700,7 +700,7 @@ def main():
                 """)
 
     with st.sidebar:
-        #run_it = st.button("Calculate")
+        run_it = st.button("Calculate")
         reset_inputs()
         st.markdown("### Input Fields")
         mortgage_inputs()
@@ -710,7 +710,8 @@ def main():
         selling_inputs()
         chart_disaply_inputs()
 
-    calculate_and_display()
+    if run_it:
+        calculate_and_display()
 
 
 main()
