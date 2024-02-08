@@ -418,301 +418,224 @@ def get_all_simulation_data(include_metrics=False, extra_payments=False):
     return results
 
 
-
 def calculate_and_display():
-    results = get_all_simulation_data(include_metrics=True)
-
-    yearly_df = results["yearly_df"]
-
-    #one, two = st.tabs([ "one", "two"])
-    #with one:
-
-
-    (
-        tab_exp,
-        tab_exp_over_time, 
-        tab_home_value,
-        tab_extra_payment,
-        tab_roi,
-        tab_profits,
-        tab_net_income,
-        tab_rent_vs_own,
-        tab_rent_vs_own_delta,
-        #data_table,
-        about
-    ) = st.tabs([ 
-        "Expenses First Year", 
-        "Expenses Over Time", 
-        "Home Value",
-        "Extra Payment Analysis",
-        "ROI",
-        "Profit",
-        "Net Income",
-        "Rent vs Own",
-        "Rent vs Own Delta",
-        #"Data Table",
-        "About"
-    ])
-
-    COLOR_MAP = {
-        "interest_exp_mo":      "#0068C9",  # Blue
-        "principal_exp_mo":     "#83C9FF",  # Light Blue
-        "property_tax_exp_mo":  "#FF2A2B",  # Red
-        "insurance_exp_mo":     "#FFABAB",  # Light Red
-        "hoa_exp_mo":           "#2AB09D",  # Light Green
-        "maintenance_exp_mo":   "#7EEFA1",  # Green
-        "utility_exp_mo":       "#FF8700",  # Organe
-        "management_exp_mo":    "#FFD16A",  # Light Orange
-        "pmi_exp_mo":           "#9030A1",  # Purple
-    }
 
     def plot_data_ss(df, cols, names, title, percent=False):
         """Helper function so we dont have to repeat the xlim amd chart mode for all plots"""
         plot_data(df, cols, names, title, ss.xlim.val, mode=ss.chart_mode.val, percent=percent)
 
+    results = get_all_simulation_data(include_metrics=True)
+    yearly_df = results["yearly_df"]
 
-    with tab_exp:
-        col1, col2 = get_tab_columns()
-        
-        with col1:
-            dict_to_metrics(results["mortgage_metrics"])
+    st.write("Select Category:")
 
-        with col2:
-            df = yearly_df.loc[0:0, list(COLOR_MAP.keys())]
-            df = df.T.reset_index().rename(columns={"index": "name", 0: "value"})
-            df = df.join(pd.DataFrame.from_dict(COLOR_MAP, orient='index', columns=["color"]), on="name")
-            df['order'] = df['name'].apply(lambda x: list(COLOR_MAP.keys()).index(x))
-            df = df.sort_values('order').drop('order', axis=1)
-            df["formatted_value"] = df["value"].apply(lambda x: format_currency(x))
-            df["name"] = df["name"].apply(lambda x: format_label_string(x))
-            df = df[df["value"] > 0]
+    (
+        top_tab_expenses,
+        top_tab_investment, 
+        top_tab_rent_vs_own,
+        about,
+    ) = st.tabs([
+        "Mortgage and Expenses", 
+        "Investment Analysis", 
+        "Rent vs Own",
+        "About"
+    ])
 
-            total = format_currency(df["value"].sum())
+    ########################################################################
+    #      Mortgage and Expenses                                           #
+    ########################################################################
 
-            fig = go.Figure()
+    with top_tab_expenses:
+        st.write("Select Chart:")
 
-            fig.add_trace(go.Pie(
-                values=df['value'].values, 
-                labels=df['name'].values,
-                marker_colors=df["color"].values,
-                hole=0.6,
-                direction ='clockwise', 
-                sort=False,
-                textposition='outside',
-                text=df["formatted_value"], 
-                textinfo='label+text',
-                marker=dict(line=dict(color='#000000', width=2)),
-                hoverinfo = 'none'
-            ))
+        (
+            tab_exp,
+            tab_exp_over_time, 
+            tab_home_value,
+            tab_extra_payment
+        ) = st.tabs([ 
+            "Expenses First Year", 
+            "Expenses Over Time", 
+            "Home Value",
+            "Extra Payment Analysis"
+        ])
 
-            fig.add_annotation(dict(
-                text=f"Total: {total}", 
-                x=0.5, y=0.5, font_size=30, showarrow=False
-            ))
+        local_css("./mortgage_calculator/tab_style.css")
 
-            fig.update_layout(
-                title="Monthly Expenses in First Year",
-                showlegend=False, 
-                height=HEIGHT,
-                width=WIDTH
-            )
+        with tab_exp:
+            col1, col2 = get_tab_columns()
+            
+            with col1:
+                dict_to_metrics(results["mortgage_metrics"])
 
-            fig_display(fig)
+            with col2:
+                pie_chart(yearly_df)
 
 
-    with tab_exp_over_time:
-        col1, col2 = get_tab_columns()
-        
-        with col1:
-            dict_to_metrics(results["mortgage_metrics"])
+        with tab_exp_over_time:
+            col1, col2 = get_tab_columns()
+            
+            with col1:
+                dict_to_metrics(results["mortgage_metrics"])
 
-        with col2:                
-            zero_sum_cols = [k for k in COLOR_MAP.keys() if yearly_df[k].sum() == 0]
-            color_map_redux = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
-
-            fig = go.Figure()
-
-            for col, color in color_map_redux.items():
-                fig.add_trace(go.Bar(
-                    x=yearly_df.index + 1, 
-                    y=yearly_df[col], 
-                    name=format_label_string(col),
-                    hoverinfo='y',
-                    hovertemplate='$%{y:,.0f}',
-                    marker_color=color
-                ))
-
-            if ss.mo_rent_income.val > 0:
-                fig.add_trace(go.Scatter(
-                    x=yearly_df.index + 1, 
-                    y=yearly_df["adj_total_income_mo"], 
-                    mode='markers',
-                    name="Total Rental Income",
-                    hoverinfo='y',
-                    hovertemplate='$%{y:,.0f}',
-                    # add a black boarder to the markers
-                    marker=dict(size=12, color='white', line=dict(color='black', width=3)),
-                ))
-                
-            fig.update_layout(
-                title="Monthly Expenses Over Time",
-                yaxis=dict(title='Dollars ($)', tickformat='$,.0f'),
-                barmode='stack',
-                height=HEIGHT,
-                width=WIDTH,
-                xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
-            )
-
-            fig.update_xaxes(range=[0, 31])
-            fig_display(fig)
+            with col2:                
+                stacked_bar(yearly_df)
 
 
-    with tab_home_value:
-        col1, col2 = get_tab_columns()
-        
-        with col1:
-            dict_to_metrics(results["mortgage_metrics"])
+        with tab_home_value:
+            col1, col2 = get_tab_columns()
+            
+            with col1:
+                dict_to_metrics(results["mortgage_metrics"])
 
-        with col2:
-            cols = ["home_value", "equity"]
-            names= ["Home Value", "Equity"]
-            title = "Home Value   <i>&</i>   Equity"
-            plot_data_ss(yearly_df, cols, names, title)
-
-
-    with tab_extra_payment:
-        extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
-        append_cols = ["profit", "extra_payments_portfolio"]
-        merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
-
-        # add regular profit with extra payment portfolio from extra_payments_df which has been joined
-        merged_df["portfolio_profit"] = merged_df["profit"] + merged_df["ep_extra_payments_portfolio"]
-
-        # get delta for both simluations against just regulat profit
-        merged_df["portfolio_profit_delta"] = merged_df["portfolio_profit"] - merged_df["profit"]
-        merged_df["ep_profit_delta"] = merged_df["ep_profit"] - merged_df["profit"]
-
-        col1, col2 = get_tab_columns()
-
-        with col1:
-            dict_to_metrics({"todo": "TODO"})
-            st.container(height=20, border=False)
-            st.write(":red[Additional Options]")
-            extra_payment_inputs()
-
-        with col2:
-            cols = ["portfolio_profit_delta", "ep_profit_delta"]
-            names= ["Addl. Profit Contribute to Stocks", "Addl. Profit Pay Down Loan"]
-            title = "Additional Profit From Extra Payments"
-            plot_data_ss(merged_df, cols, names, title, percent=False)
+            with col2:
+                cols = ["home_value", "equity"]
+                names= ["Home Value", "Equity"]
+                title = "Home Value   <i>&</i>   Equity"
+                plot_data_ss(yearly_df, cols, names, title)
 
 
-    with tab_net_income:
-        col1, col2 = get_tab_columns()
+        with tab_extra_payment:
+            extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
+            append_cols = ["profit", "extra_payments_portfolio"]
+            merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
 
-        with col1:
-            dict_to_metrics(results["investment_metrics"])
+            # add regular profit with extra payment portfolio from extra_payments_df which has been joined
+            merged_df["portfolio_profit"] = merged_df["profit"] + merged_df["ep_extra_payments_portfolio"]
 
-        with col2:
-            cols = ["noi_mo", "niaf_mo"]
-            names= ["Monthly NOI", "Monthly NIAF"]
-            title = "Monthly Net Income"
-            plot_data_ss(yearly_df, cols, names, title)
+            # get delta for both simluations against just regulat profit
+            merged_df["portfolio_profit_delta"] = merged_df["portfolio_profit"] - merged_df["profit"]
+            merged_df["ep_profit_delta"] = merged_df["ep_profit"] - merged_df["profit"]
 
+            col1, col2 = get_tab_columns()
 
-    with tab_roi:
-        col1, col2 = get_tab_columns()
-        
-        with col1:
-            dict_to_metrics(results["investment_metrics"])
+            with col1:
+                dict_to_metrics({"todo": "TODO"})
+                st.container(height=20, border=False)
+                st.write(":red[Additional Options]")
+                extra_payment_inputs()
 
-        with col2:
-            cols = ["roi", "coc_roi"]
-            names= ["ROI", "Cash on Cash ROI"]
-            title = "Return on Investment (ROI)"
-            plot_data_ss(yearly_df, cols, names, title, percent=True)
-
-
-    with tab_profits:
-        col1, col2 = get_tab_columns()
-        
-        with col1:
-            dict_to_metrics(results["investment_metrics"])
-
-        with col2:
-            cols = ["profit", "cum_niaf"]
-            names= ["Total Profit (With Equity)", "Total Cash"]
-            title = "Investment Profit/Loss"
-            plot_data_ss(yearly_df, cols, names, title)
+            with col2:
+                cols = ["portfolio_profit_delta", "ep_profit_delta"]
+                names= ["Addl. Profit Contribute to Stocks", "Addl. Profit Pay Down Loan"]
+                title = "Additional Profit From Extra Payments"
+                plot_data_ss(merged_df, cols, names, title, percent=False)
 
 
-    with tab_rent_vs_own:
-        with st.expander("Rent vs Own", expanded=True):
-            st.write("""
-                    This tab compares the total returns of owning a home versus renting.
-                    In this scenario, instead of buying a home, you would have put all the out of pocket cash into the stock market
-                    and live in a rental. In any month, if the expenses of owning
-                    a home are greater than rent, that extra cash is invested into the stock market.
-                    This captures the opportunity cost of capital. In many situations, if you arent house hacking,
-                    you should expect a loss in the short to medium term for either decision, but by comparing the two,
-                    you can figure out which one saves you more money in the long run, and how long you 
-                    have to live in a home to make it worth it over renting.
-                    """)
+    ########################################################################
+    #      Investment                                                      #
+    ########################################################################
 
-        col1, col2 = get_tab_columns()
+    with top_tab_investment:
+        st.write("Select Chart:")
+        (
+            tab_roi,
+            tab_profits,
+            tab_net_income,
+        ) = st.tabs([ 
+            "ROI",
+            "Profit",
+            "Net Income",
+        ])
 
-        with col1:
-            dict_to_metrics(results["rental_comparison_metrics"])
-            st.container(height=20, border=False)
-            st.write(":red[Additional Options]")
-            rent_vs_own_inputs()
+        with tab_net_income:
+            col1, col2 = get_tab_columns()
 
-        with col2:
-            cols = ["profit", "renting_profit"]
-            names= ["Own", "Rent"]
-            title = "Rent vs Own Profit/Loss"
-            plot_data_ss(yearly_df, cols, names, title)
+            with col1:
+                dict_to_metrics(results["investment_metrics"])
 
-
-    with tab_rent_vs_own_delta:
-        col1, col2 = get_tab_columns()
-
-        with col1:
-            dict_to_metrics(results["rental_comparison_metrics"])
-
-        with col2:
-            cols = ["ownership_upside"]
-            names= ["Ownership Upside"]
-            title = "Home Ownership Upside Over Renting"
-            plot_data_ss(yearly_df, cols, names, title)
+            with col2:
+                cols = ["noi_mo", "niaf_mo"]
+                names= ["Monthly NOI", "Monthly NIAF"]
+                title = "Monthly Net Income"
+                plot_data_ss(yearly_df, cols, names, title)
 
 
-    # with data_table:
-    #         default_cols = [
-    #             "interest_exp",
-    #             "principal_exp",
-    #             "op_exp",
-    #             "total_exp",
-    #             "adj_total_income",
-    #             "niaf",
-    #             "rent_exp",
-    #             "stock_contrib",
-    #             "home_value",
-    #             "loan_balance",
-    #             "stock_value",
-    #             "cum_niaf",
-    #             "cum_stock_contrib",
-    #             "equity",
-    #             "total_return",
-    #             "coc_roi",
-    #             "roi",
-    #             "total_return_rent",
-    #         ]
-    #         selected_columns = st.multiselect('Select columns to display:', yearly_df.columns, default=default_cols)
-    #         round_columns = [x for x in selected_columns if "roi" not in x]
-    #         filtered_df = yearly_df[selected_columns]
-    #         filtered_df.loc[: ,round_columns] = filtered_df.loc[: ,round_columns].round()
-    #         st.dataframe(filtered_df, use_container_width=True)
+        with tab_roi:
+            col1, col2 = get_tab_columns()
+            
+            with col1:
+                dict_to_metrics(results["investment_metrics"])
+
+            with col2:
+                cols = ["roi", "coc_roi"]
+                names= ["ROI", "Cash on Cash ROI"]
+                title = "Return on Investment (ROI)"
+                plot_data_ss(yearly_df, cols, names, title, percent=True)
+
+
+        with tab_profits:
+            col1, col2 = get_tab_columns()
+            
+            with col1:
+                dict_to_metrics(results["investment_metrics"])
+
+            with col2:
+                cols = ["profit", "cum_niaf"]
+                names= ["Total Profit (With Equity)", "Total Cash"]
+                title = "Investment Profit/Loss"
+                plot_data_ss(yearly_df, cols, names, title)
+
+
+    ########################################################################
+    #      Rent vs Own                                                     #
+    ########################################################################
+
+    with top_tab_rent_vs_own:
+        st.write("Select Chart:")
+        (
+            tab_rent_vs_own,
+            tab_rent_vs_own_delta,
+        ) = st.tabs([ 
+            "Rent vs Own",
+            "Rent vs Own Delta",
+        ])
+
+
+        with tab_rent_vs_own:
+            with st.expander("Rent vs Own", expanded=True):
+                st.write("""
+                        This tab compares the total returns of owning a home versus renting.
+                        In this scenario, instead of buying a home, you would have put all the out of pocket cash into the stock market
+                        and live in a rental. In any month, if the expenses of owning
+                        a home are greater than rent, that extra cash is invested into the stock market.
+                        This captures the opportunity cost of capital. In many situations, if you arent house hacking,
+                        you should expect a loss in the short to medium term for either decision, but by comparing the two,
+                        you can figure out which one saves you more money in the long run, and how long you 
+                        have to live in a home to make it worth it over renting.
+                        """)
+
+            col1, col2 = get_tab_columns()
+
+            with col1:
+                dict_to_metrics(results["rental_comparison_metrics"])
+                st.container(height=20, border=False)
+                st.write(":red[Additional Options]")
+                rent_vs_own_inputs()
+
+            with col2:
+                cols = ["profit", "renting_profit"]
+                names= ["Own", "Rent"]
+                title = "Rent vs Own Profit/Loss"
+                plot_data_ss(yearly_df, cols, names, title)
+
+
+        with tab_rent_vs_own_delta:
+            col1, col2 = get_tab_columns()
+
+            with col1:
+                dict_to_metrics(results["rental_comparison_metrics"])
+
+            with col2:
+                cols = ["ownership_upside"]
+                names= ["Ownership Upside"]
+                title = "Home Ownership Upside Over Renting"
+                plot_data_ss(yearly_df, cols, names, title)
+
+
+    ########################################################################
+    #      About                                                           #
+    ########################################################################
 
     with about:
         st.write("Made you look")

@@ -1,5 +1,8 @@
 import streamlit as st
 import plotly.graph_objs as go
+import pandas as pd
+import numpy as np
+
 
 HEIGHT = 700
 WIDTH = 800
@@ -8,6 +11,18 @@ BLUE = "#1f77b4"
 ORANGE = "#ff7f0e"
 
 PLOT_COLORS = [BLUE, ORANGE]
+
+COLOR_MAP = {
+    "interest_exp_mo":      "#0068C9",  # Blue
+    "principal_exp_mo":     "#83C9FF",  # Light Blue
+    "property_tax_exp_mo":  "#FF2A2B",  # Red
+    "insurance_exp_mo":     "#FFABAB",  # Light Red
+    "hoa_exp_mo":           "#2AB09D",  # Light Green
+    "maintenance_exp_mo":   "#7EEFA1",  # Green
+    "utility_exp_mo":       "#FF8700",  # Organe
+    "management_exp_mo":    "#FFD16A",  # Light Orange
+    "pmi_exp_mo":           "#9030A1",  # Purple
+}
 
 
 def merge_simulations(sim_df_a, sim_df_b, append_cols, prefix):
@@ -171,4 +186,88 @@ def plot_data(yearly_df, cols, names, title, xlim, mode, percent=False, height=H
     )
 
     fig.update_xaxes(range=[0, xlim+1])
+    fig_display(fig)
+
+
+def pie_chart(yearly_df):
+    df = yearly_df.loc[0:0, list(COLOR_MAP.keys())]
+    df = df.T.reset_index().rename(columns={"index": "name", 0: "value"})
+    df = df.join(pd.DataFrame.from_dict(COLOR_MAP, orient='index', columns=["color"]), on="name")
+    df['order'] = df['name'].apply(lambda x: list(COLOR_MAP.keys()).index(x))
+    df = df.sort_values('order').drop('order', axis=1)
+    df["formatted_value"] = df["value"].apply(lambda x: format_currency(x))
+    df["name"] = df["name"].apply(lambda x: format_label_string(x))
+    df = df[df["value"] > 0]
+
+    total = format_currency(df["value"].sum())
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Pie(
+        values=df['value'].values, 
+        labels=df['name'].values,
+        marker_colors=df["color"].values,
+        hole=0.6,
+        direction ='clockwise', 
+        sort=False,
+        textposition='outside',
+        text=df["formatted_value"], 
+        textinfo='label+text',
+        marker=dict(line=dict(color='#000000', width=2)),
+        hoverinfo = 'none'
+    ))
+
+    fig.add_annotation(dict(
+        text=f"Total: {total}", 
+        x=0.5, y=0.5, font_size=30, showarrow=False
+    ))
+
+    fig.update_layout(
+        title="Monthly Expenses in First Year",
+        showlegend=False, 
+        height=HEIGHT,
+        width=WIDTH
+    )
+
+    fig_display(fig)
+
+
+def stacked_bar(yearly_df):
+    zero_sum_cols = [k for k in COLOR_MAP.keys() if yearly_df[k].sum() == 0]
+    color_map_redux = {k: v for k, v in COLOR_MAP.items() if k not in zero_sum_cols}
+
+    fig = go.Figure()
+
+    for col, color in color_map_redux.items():
+        fig.add_trace(go.Bar(
+            x=yearly_df.index + 1, 
+            y=yearly_df[col], 
+            name=format_label_string(col),
+            hoverinfo='y',
+            hovertemplate='$%{y:,.0f}',
+            marker_color=color
+        ))
+
+    if yearly_df["total_income"].sum() > 0:
+        fig.add_trace(go.Scatter(
+            x=yearly_df.index + 1, 
+            y=yearly_df["adj_total_income_mo"], 
+            mode='markers',
+            name="Total Rental Income",
+            hoverinfo='y',
+            hovertemplate='$%{y:,.0f}',
+            # add a black boarder to the markers
+            marker=dict(size=12, color='white', line=dict(color='black', width=3)),
+        ))
+        
+    fig.update_layout(
+        title="Monthly Expenses Over Time",
+        yaxis=dict(title='Dollars ($)', tickformat='$,.0f'),
+        barmode='stack',
+        height=HEIGHT,
+        width=WIDTH,
+        xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
+    )
+
+    fig.update_xaxes(range=[0, 31])
     fig_display(fig)
