@@ -449,18 +449,26 @@ def calculate_and_display():
         st.write("Select Chart:")
 
         (
+            intro,
             tab_exp,
             tab_exp_over_time, 
             tab_home_value,
             tab_extra_payment
         ) = st.tabs([ 
+            "Category Intro",
             "Expenses First Year", 
             "Expenses Over Time", 
             "Home Value",
             "Extra Payment Analysis"
         ])
 
-        local_css("./mortgage_calculator/tab_style.css")
+        with intro:
+            st.write("""This category contains information about the costs of owning a home and 
+                     mortgage and the value of your home overtime. It can be used as a simple 
+                     mortgage calculator. If you've filled out the rental income section, you can 
+                     also see some simple comparisons between youre costs and income. The 'Extra 
+                     Payment Analysis' tab will show you the impact of making extra payments on your 
+                     mortgage and whether it is a good idea given other investment options.""")
 
         with tab_exp:
             col1, col2 = get_tab_columns()
@@ -529,14 +537,24 @@ def calculate_and_display():
     with top_tab_investment:
         st.write("Select Chart:")
         (
+            intro,
             tab_roi,
             tab_profits,
             tab_net_income,
         ) = st.tabs([ 
+            "Category Intro",
             "ROI",
             "Profit",
             "Net Income",
         ])
+
+        with intro:
+            st.write("""This catgory shows common figures and metrics used to asses the quality of a
+                     rental investment. This will be most useful if you plan on making some rental income 
+                     with this property, but many of the figures are still useful in just assessing
+                     home ownership as an invesment. If you havent spent time analysing rental properties,
+                     the terms and figures here might be confusing or unfamiliar. Navigate to the 'About' tab
+                     to learn more about these concepts and how to use them.""")
 
         with tab_net_income:
             col1, col2 = get_tab_columns()
@@ -584,27 +602,28 @@ def calculate_and_display():
     with top_tab_rent_vs_own:
         st.write("Select Chart:")
         (
+            intro,
             tab_rent_vs_own,
             tab_rent_vs_own_delta,
         ) = st.tabs([ 
+            "Category Intro",
             "Rent vs Own",
             "Rent vs Own Delta",
         ])
 
+        with intro:
+            st.write("""
+                This tab compares the total returns of owning a home versus renting.
+                In this scenario, instead of buying a home, you would have put all the out of pocket cash into the stock market
+                and live in a rental. In any month, if the expenses of owning
+                a home are greater than rent, that extra cash is invested into the stock market.
+                This captures the opportunity cost of capital. In many situations, if you arent house hacking,
+                you should expect a loss in the short to medium term for either decision, but by comparing the two,
+                you can figure out which one saves you more money in the long run, and how long you 
+                have to live in a home to make it worth it over renting.
+                """)
 
         with tab_rent_vs_own:
-            with st.expander("Rent vs Own", expanded=True):
-                st.write("""
-                        This tab compares the total returns of owning a home versus renting.
-                        In this scenario, instead of buying a home, you would have put all the out of pocket cash into the stock market
-                        and live in a rental. In any month, if the expenses of owning
-                        a home are greater than rent, that extra cash is invested into the stock market.
-                        This captures the opportunity cost of capital. In many situations, if you arent house hacking,
-                        you should expect a loss in the short to medium term for either decision, but by comparing the two,
-                        you can figure out which one saves you more money in the long run, and how long you 
-                        have to live in a home to make it worth it over renting.
-                        """)
-
             col1, col2 = get_tab_columns()
 
             with col1:
