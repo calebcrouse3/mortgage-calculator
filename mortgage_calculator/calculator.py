@@ -104,19 +104,23 @@ def chart_disaply_inputs():
 
 
 def rent_vs_own_inputs():
-    populate_columns([
-        lambda: dollar_input("Mo. Rent Payment", ss.rent_exp.key, min_value=0, max_value=1e5, step=100,
-        help="This is the current monthly rent you would pay instead of buying the home in consideration."),
-    ], 1)
+    with st.form("rent_vs_own_form", border=False):
+        st.form_submit_button('Update Rent Payment')
+        populate_columns([
+            lambda: dollar_input("Mo. Rent Payment", ss.rent_exp.key, min_value=0, max_value=1e5, step=100,
+            help="This is the current monthly rent you would pay instead of buying the home in consideration."),
+        ], 1)
 
 
 def extra_payment_inputs():
-    populate_columns([
-        lambda: dollar_input("Mo. Payment Amount", ss.mo_extra_payment.key)
-    ], 1)
-    populate_columns([
-        lambda: dollar_input("Number of Payments", ss.num_extra_payments.key)
-    ], 1)
+    with st.form("extra_payment_form", border=False):
+        st.form_submit_button('Update Extra Payments')
+        populate_columns([
+            lambda: dollar_input("Mo. Payment Amount", ss.mo_extra_payment.key)
+        ], 1)
+        populate_columns([
+            lambda: dollar_input("Number of Payments", ss.num_extra_payments.key)
+        ], 1)
 
 
 def get_monthly_sim_df(oop, loan_amount, monthly_payment, extra_payments):
@@ -456,7 +460,7 @@ def calculate_and_display():
             tab_extra_payment
         ) = st.tabs([ 
             "Category Intro",
-            "Expenses First Year", 
+            "Expenses", 
             "Expenses Over Time", 
             "Home Value",
             "Extra Payment Analysis"
@@ -700,18 +704,18 @@ def main():
                 """)
 
     with st.sidebar:
-        run_it = st.button("Calculate")
+        with st.form("my_form", border=False):
+            st.form_submit_button('Update Calculation')
+            st.markdown("### Input Fields")
+            mortgage_inputs()
+            expenses_inputs()
+            economic_factors_inputs()
+            rent_income_inputs()
+            selling_inputs()
+            chart_disaply_inputs()
         reset_inputs()
-        st.markdown("### Input Fields")
-        mortgage_inputs()
-        expenses_inputs()
-        economic_factors_inputs()
-        rent_income_inputs()
-        selling_inputs()
-        chart_disaply_inputs()
-
-    if run_it:
-        calculate_and_display()
+    
+    calculate_and_display()
 
 
 main()

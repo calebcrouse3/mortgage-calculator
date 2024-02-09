@@ -25,3 +25,10 @@ button[title="View fullscreen"]{
 .stTabs [data-baseweb="tab-border"] {
     display: none;
 }
+
+
+/* Remove plus minus on number buttons 
+button.step-up {display: none;}
+button.step-down {display: none;}
+div[data-baseweb] {border-radius: 4px;}
+*/
