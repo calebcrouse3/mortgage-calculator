@@ -15,3 +15,6 @@ tar:
 
 run-docker:
 	@docker run --rm -it -p 8501:8501 mortgage-calculator
+
+load-test:
+	@poetry run locust -f load_test/locustfile.py

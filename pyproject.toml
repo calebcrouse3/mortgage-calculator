@@ -18,6 +18,7 @@ jupyter = "^1.0.0"
 itables = "^1.6.3"
 matplotlib = "^3.8.2"
 print-matrix = "^0.1.0"
+locust = "^2.22.0"
 
 [build-system]
 requires = ["poetry-core"]
