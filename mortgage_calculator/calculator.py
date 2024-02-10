@@ -25,15 +25,18 @@ def mortgage_inputs():
     with st.expander("Mortgage", expanded=True):
         populate_columns([
             lambda: dollar_input("Home Price", ss.home_price.key, min_value=2e4, max_value=10e6, step=2e4),
-            lambda: dollar_input("Rehab", ss.rehab.key, min_value=0, max_value=5e5, step=2e3),
+            lambda: dollar_input("Rehab", ss.rehab.key, min_value=0, max_value=5e5, step=2e3,
+                help="Cost of repairs or renovations right after buying."),
         ], 2)
         populate_columns([
             lambda: dollar_input("Down Payment", ss.down_payment.key, min_value=0, max_value=1e6, step=5e3),
             lambda: rate_input("Interest Rate", ss.interest_rate.key),
         ], 2)
         populate_columns([
-            lambda: rate_input("Closing Costs", ss.closing_costs_rate.key),
-            lambda: rate_input("PMI Rate", ss.pmi_rate.key),
+            lambda: rate_input("Closing Costs", ss.closing_costs_rate.key, 
+                help="Calculated as a percentage of home price"),
+            lambda: rate_input("PMI Rate", ss.pmi_rate.key, 
+                help="If down payment is less than 20% of home price, youll have to pay PMI"),
         ], 2)
 
 
@@ -41,7 +44,8 @@ def expenses_inputs():
     with st.expander("Expenses", expanded=False):
         populate_columns([
             lambda: rate_input("Property Tax", ss.yr_property_tax_rate.key),
-            lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key),
+            lambda: rate_input("Insurance Rate", ss.yr_insurance_rate.key, 
+                help="Yearly insurance as a percentage of home value"),
         ], 2)
         populate_columns([
             lambda: dollar_input("Mo. HOA Fees", ss.mo_hoa_fees.key, max_value=1e4, step=50),
@@ -49,7 +53,7 @@ def expenses_inputs():
         ], 2)
         populate_columns([
             lambda: rate_input("Maintenance", ss.yr_maintenance.key, 
-                               help="Yearly maintenance as a percentage of home value"),     
+                help="Yearly maintenance as a percentage of home value"),     
         ], 2)
 
 
@@ -72,19 +76,23 @@ def rent_income_inputs():
             lambda: dollar_input("Mo. Misc Income", ss.mo_other_income.key, max_value=1e4, step=50),
         ], 2)
         populate_columns([
-            lambda: rate_input("Vacancy Rate", ss.vacancy_rate.key),
-            lambda: rate_input("Management Fee", ss.management_rate.key),
+            lambda: rate_input("Vacancy Rate", ss.vacancy_rate.key,
+                help="Percentage of the year the property is vacant"),
+            lambda: rate_input("Management Fee", ss.management_rate.key,
+                help="Percentage of rental income paid to property management"),
         ], 2)
 
 
 def selling_inputs():
     with st.expander("Selling Fees/Taxes", expanded=False):
         populate_columns([
-            lambda: rate_input("Income Tax", ss.income_tax_rate.key),
+            lambda: rate_input("Income Tax", ss.income_tax_rate.key, 
+                help="If rental property cash flows, that profit is taxed at this rate"),
             lambda: rate_input("Realtor Fee", ss.realtor_rate.key),
         ], 2)
         populate_columns([
-            lambda: rate_input("Capital Gains Tax", ss.capital_gains_tax_rate.key),
+            lambda: rate_input("Capital Gains Tax", ss.capital_gains_tax_rate.key, 
+                help="Tax on profits from selling property or stock"),
         ], 2)
 
 
@@ -108,7 +116,7 @@ def rent_vs_own_inputs():
         st.form_submit_button('Update Rent Payment')
         populate_columns([
             lambda: dollar_input("Mo. Rent Payment", ss.rent_exp.key, min_value=0, max_value=1e5, step=100,
-            help="This is the current monthly rent you would pay instead of buying the home in consideration."),
+                help="This is the monthly rent you would pay instead of buying the home in consideration."),
         ], 1)
 
 
@@ -116,10 +124,12 @@ def extra_payment_inputs():
     with st.form("extra_payment_form", border=False):
         st.form_submit_button('Update Extra Payments')
         populate_columns([
-            lambda: dollar_input("Mo. Payment Amount", ss.mo_extra_payment.key)
+            lambda: dollar_input("Mo. Payment Amount", ss.mo_extra_payment.key, 
+                help="Extra payment paid monthly towards the principle of the loan"),
         ], 1)
         populate_columns([
-            lambda: dollar_input("Number of Payments", ss.num_extra_payments.key)
+            lambda: dollar_input("Number of Payments", ss.num_extra_payments.key, 
+                help="Number of months to make extra payments starting from month 1"),
         ], 1)
 
 
@@ -263,6 +273,7 @@ def get_monthly_sim_df(oop, loan_amount, monthly_payment, extra_payments):
             "noi": noi,
             "niaf": niaf,
             "rent_exp": rent_exp,
+            "extra_payment_exp": extra_payment_exp,
             # Balances and values. End of month.
             "loan_balance": loan_balance,
             "home_value": home_value,
@@ -301,7 +312,7 @@ def get_yearly_agg_df(sim_df, oop, closing_costs):
             "interest_exp", "principal_exp", "property_tax_exp", "insurance_exp",
             "hoa_exp", "maintenance_exp", "pmi_exp", "utility_exp", "management_exp",
             "op_exp", "total_exp", "rent_income", "other_income", "total_income",
-            "adj_total_income", "noi", "niaf", "rent_exp"
+            "adj_total_income", "noi", "niaf", "rent_exp", "extra_payment_exp"
     ]
 
     agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
@@ -360,13 +371,12 @@ def get_mortgage_metrics(df, oop, loan_amount, closing_costs):
     return {
         #"Down Payment": format_currency(ss.down_payment.val),
         #"Rehab": format_currency(ss.rehab.val),
-        #"Closing Costs": format_currency(closing_costs),
+        "Closing Costs": format_currency(closing_costs),
         "Cash Outlay": format_currency(oop),
         "Loan Amount": format_currency(loan_amount),
         "Total PMI Paid": format_currency(df["pmi_exp"].sum()),
         "Total Taxes Paid": format_currency(df["property_tax_exp"].sum()),
         "Total Interest Paid": format_currency(df["interest_exp"].sum()),
-        "Default Interest Paid": format_currency(get_total_interest_paid(loan_amount, ss.interest_rate.val)),
     }
 
 
@@ -380,10 +390,10 @@ def get_investment_metrics(df, oop):
         GRM = int(df.loc[0, "home_value"] / df.loc[0, "rent_income"])
 
     return  {
-        "GRM": GRM,
+        "Gross Rental Multiplier": GRM,
         "Cap Rate": format_percent(df.loc[0, "noi"] / ss.home_price.val),
-        "Year One Cash Flow": format_currency(df.loc[0, "niaf"]),
-        "Year One ROI": format_percent(df.loc[0, "roi"]),
+        "Mo. Cash Flow": format_currency(df.loc[0, "niaf_mo"]),
+        "First Year ROI": format_percent(df.loc[0, "roi"]),
         "1% Rule": f"Yes {formatted_opr}" if opr >= 0.01 else f"No {formatted_opr}",
     }
 
@@ -424,121 +434,162 @@ def get_all_simulation_data(include_metrics=False, extra_payments=False):
 
 def calculate_and_display():
 
-    def plot_data_ss(df, cols, names, title, percent=False):
+    def get_plot_ss(df, cols, names, title, percent=False, line_config=None, annotation_config=None):
         """Helper function so we dont have to repeat the xlim amd chart mode for all plots"""
-        plot_data(df, cols, names, title, ss.xlim.val, mode=ss.chart_mode.val, percent=percent)
+        get_plot(df, cols, names, title, ss.xlim.val, mode=ss.chart_mode.val, percent=percent, line_config=line_config, annotation_config=annotation_config)
 
     results = get_all_simulation_data(include_metrics=True)
     yearly_df = results["yearly_df"]
 
-    st.write("Select Category:")
+    st.write("Select Analysis Category:")
 
     (
         top_tab_expenses,
-        top_tab_investment, 
+        top_tab_extra_payments,
+        top_tab_investing, 
         top_tab_rent_vs_own,
         about,
     ) = st.tabs([
-        "Mortgage and Expenses", 
-        "Investment Analysis", 
+        "Mortgage and Expenses",
+        "Extra Payments",
+        "Investing", 
         "Rent vs Own",
         "About"
     ])
+
 
     ########################################################################
     #      Mortgage and Expenses                                           #
     ########################################################################
 
     with top_tab_expenses:
-        st.write("Select Chart:")
-
-        (
-            intro,
-            tab_exp,
-            tab_exp_over_time, 
-            tab_home_value,
-            tab_extra_payment
-        ) = st.tabs([ 
-            "Category Intro",
-            "Expenses", 
-            "Expenses Over Time", 
-            "Home Value",
-            "Extra Payment Analysis"
-        ])
-
-        with intro:
+        with st.expander("Description", expanded=True):
             st.write("""This category contains information about the costs of owning a home and 
-                     mortgage and the value of your home overtime. It can be used as a simple 
-                     mortgage calculator. If you've filled out the rental income section, you can 
-                     also see some simple comparisons between youre costs and income. The 'Extra 
-                     Payment Analysis' tab will show you the impact of making extra payments on your 
-                     mortgage and whether it is a good idea given other investment options.""")
+                        mortgage and the value of your home overtime. It can be used as a simple 
+                        mortgage calculator. If you've filled out the rental income section, you can 
+                        also see some simple comparisons between youre costs and income. The 'Extra 
+                        Payment Analysis' tab will show you the impact of making extra payments on your 
+                        mortgage and whether it is a good idea given other investment options.""")
 
-        with tab_exp:
-            col1, col2 = get_tab_columns()
-            
-            with col1:
-                dict_to_metrics(results["mortgage_metrics"])
+        col1, col2 = get_tab_columns()
 
-            with col2:
+        with col1:
+            dict_to_metrics(results["mortgage_metrics"])
+
+        with col2:
+            st.write("Select Chart:")
+
+            (
+                tab_exp,
+                tab_exp_over_time,
+                tab_home_value,
+            ) = st.tabs([
+                "Expenses", 
+                "Expenses Over Time", 
+                "Home Value"
+            ])
+
+            with tab_exp:
                 pie_chart(yearly_df)
 
-
-        with tab_exp_over_time:
-            col1, col2 = get_tab_columns()
-            
-            with col1:
-                dict_to_metrics(results["mortgage_metrics"])
-
-            with col2:                
+            with tab_exp_over_time:              
                 stacked_bar(yearly_df)
 
 
-        with tab_home_value:
-            col1, col2 = get_tab_columns()
-            
-            with col1:
-                dict_to_metrics(results["mortgage_metrics"])
-
-            with col2:
+            with tab_home_value:
                 cols = ["home_value", "equity"]
                 names= ["Home Value", "Equity"]
-                title = "Home Value   <i>&</i>   Equity"
-                plot_data_ss(yearly_df, cols, names, title)
+                title = "Home Value and Equity"
+                get_plot_ss(yearly_df, cols, names, title)
 
 
-        with tab_extra_payment:
-            extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
-            append_cols = ["profit", "extra_payments_portfolio"]
-            merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
+    ########################################################################
+    #      Extra Payments                                                  #
+    ########################################################################
 
-            # add regular profit with extra payment portfolio from extra_payments_df which has been joined
-            merged_df["portfolio_profit"] = merged_df["profit"] + merged_df["ep_extra_payments_portfolio"]
+    with top_tab_extra_payments:
+        # (
+        #     intro,
+        #     tab_extra_payment
+        # ) = st.tabs([ 
+        #     "Category Intro",
+        #     "Extra Payments Analysis"
+        # ])
 
-            # get delta for both simluations against just regulat profit
-            merged_df["portfolio_profit_delta"] = merged_df["portfolio_profit"] - merged_df["profit"]
-            merged_df["ep_profit_delta"] = merged_df["ep_profit"] - merged_df["profit"]
+        with st.expander("Description", expanded=True):
+            st.write("""Many home owners consider making extra payments towards there mortgage to save on interest.
+                     This tab allows you to add extra monthly payments and see the effect of interest savings over time.
+                     Its important to also consider if that extra money would have been better spent somewhere else.
+                     This chart also tells you how much you could have made if you had instead invested that money in a 
+                     stock portfolio with continuous growth. The main variables that effect the difference between these 
+                     two options are the difference between interest rate on the loan and the growth rate of the stock portfolio.
+                     In this scenario. Its also important to consider that the stock market is highly variable and returns, especially
+                     in the short term, may not be continuous. Where as the interest savings from extra payments are guaranteed.
+                     Conversely, the savings on interest from extra payments take time to accumulate, 
+                     where as the stock portfolio has the potential to grow immediately. Extra mortgage payments 
+                     with have a greater effect on the interest savings the earlier they are made.""")
 
-            col1, col2 = get_tab_columns()
+        extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
+        append_cols = ["profit", "extra_payments_portfolio", "loan_balance", "extra_payment_exp"]
+        merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
 
-            with col1:
-                dict_to_metrics({"todo": "TODO"})
-                st.container(height=20, border=False)
-                st.write(":red[Additional Options]")
-                extra_payment_inputs()
+        # add regular profit with extra payment portfolio from extra_payments_df which has been joined
+        merged_df["portfolio_profit"] = merged_df["profit"] + merged_df["ep_extra_payments_portfolio"]
 
-            with col2:
-                cols = ["portfolio_profit_delta", "ep_profit_delta"]
-                names= ["Addl. Profit Contribute to Stocks", "Addl. Profit Pay Down Loan"]
-                title = "Additional Profit From Extra Payments"
-                plot_data_ss(merged_df, cols, names, title, percent=False)
+        # get delta for both simluations against just regulat profit
+        merged_df["portfolio_profit_delta"] = merged_df["portfolio_profit"] - merged_df["profit"]
+        merged_df["ep_profit_delta"] = merged_df["ep_profit"] - merged_df["profit"]
+
+        # remove any rows after the first row with a loan balance of 0
+        zero_index = merged_df[merged_df["ep_loan_balance"] == 0].index[0]
+
+        merged_df = merged_df.loc[:zero_index]
+
+        crossover = min_crossover(merged_df["ep_profit_delta"].values, merged_df["portfolio_profit_delta"].values)
+        df_len = len(merged_df)
+        total_extra_payments = merged_df["ep_extra_payment_exp"].sum()
+
+        col1, col2 = get_tab_columns()
+
+        with col1:
+            dict_to_metrics({
+                "Reduced Payoff Time": f"{30 - df_len} Years",
+                "Total Extra Payment": format_currency(total_extra_payments),
+                "Total Interest Savings": format_currency(merged_df.loc[zero_index, "ep_profit_delta"])})
+            st.container(height=20, border=False)
+            st.write(":red[Additional Options]")
+            extra_payment_inputs()
+
+        with col2:
+            ypos = max(merged_df.loc[df_len-1, "portfolio_profit_delta"], merged_df.loc[df_len-1, "ep_profit_delta"])
+            line_config = dict(
+                type='line', 
+                x0=df_len, x1=df_len, y0=0, y1=ypos*1.15, 
+                line=dict(dash='dot', color='white', width=2),
+            )
+
+            annotation_config = dict(
+                x=df_len-1, y=ypos*1.2, xref='x', yref='y', text='Mortgage Paid Off', showarrow=False
+            )
+            cols = ["portfolio_profit_delta", "ep_profit_delta"]
+            names= ["Contribute to Stocks", "Pay Down Loan"]
+            title = "Additional Profit From Extra Payments"
+            get_plot_ss(merged_df, cols, names, title, percent=False, line_config=line_config, annotation_config=annotation_config)
+
+            if total_extra_payments == 0:
+                st.write(f":orange[Analysis] Add some extra payments to see results.")              
+            elif crossover == -1:
+                st.write(":orange[Analysis] Over the long run, you would probably have more money if you had invested in the stock market.")
+            elif crossover >= 0:
+                st.write(f":orange[Analysis] Making these extra payments is a smart idea if plan on living in this house for at least {crossover} years.")
+
 
 
     ########################################################################
     #      Investment                                                      #
     ########################################################################
 
-    with top_tab_investment:
+    with top_tab_investing:
         st.write("Select Chart:")
         (
             intro,
@@ -570,7 +621,7 @@ def calculate_and_display():
                 cols = ["noi_mo", "niaf_mo"]
                 names= ["Monthly NOI", "Monthly NIAF"]
                 title = "Monthly Net Income"
-                plot_data_ss(yearly_df, cols, names, title)
+                get_plot_ss(yearly_df, cols, names, title)
 
 
         with tab_roi:
@@ -583,7 +634,7 @@ def calculate_and_display():
                 cols = ["roi", "coc_roi"]
                 names= ["ROI", "Cash on Cash ROI"]
                 title = "Return on Investment (ROI)"
-                plot_data_ss(yearly_df, cols, names, title, percent=True)
+                get_plot_ss(yearly_df, cols, names, title, percent=True)
 
 
         with tab_profits:
@@ -595,8 +646,8 @@ def calculate_and_display():
             with col2:
                 cols = ["profit", "cum_niaf"]
                 names= ["Total Profit (With Equity)", "Total Cash"]
-                title = "Investment Profit/Loss"
-                plot_data_ss(yearly_df, cols, names, title)
+                title = "Total Profit/Loss"
+                get_plot_ss(yearly_df, cols, names, title)
 
 
     ########################################################################
@@ -640,7 +691,7 @@ def calculate_and_display():
                 cols = ["profit", "renting_profit"]
                 names= ["Own", "Rent"]
                 title = "Rent vs Own Profit/Loss"
-                plot_data_ss(yearly_df, cols, names, title)
+                get_plot_ss(yearly_df, cols, names, title)
 
 
         with tab_rent_vs_own_delta:
@@ -653,7 +704,7 @@ def calculate_and_display():
                 cols = ["ownership_upside"]
                 names= ["Ownership Upside"]
                 title = "Home Ownership Upside Over Renting"
-                plot_data_ss(yearly_df, cols, names, title)
+                get_plot_ss(yearly_df, cols, names, title)
 
 
     ########################################################################
@@ -709,8 +760,8 @@ def main():
             st.markdown("### Input Fields")
             mortgage_inputs()
             expenses_inputs()
-            economic_factors_inputs()
             rent_income_inputs()
+            economic_factors_inputs()
             selling_inputs()
             chart_disaply_inputs()
         reset_inputs()

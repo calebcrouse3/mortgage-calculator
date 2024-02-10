@@ -24,6 +24,7 @@ COLOR_MAP = {
     "pmi_exp_mo":           "#9030A1",  # Purple
 }
 
+TITLE_FONT = dict(family="Arial, sans-serif", size=24)
 
 def merge_simulations(sim_df_a, sim_df_b, append_cols, prefix):
         """
@@ -41,13 +42,13 @@ def local_css(file_name):
 
 
 def dict_to_metrics(data_dict):
-    st.container(height=20, border=False)
+    st.container(height=10, border=False)
     for key, value in data_dict.items():
         st.metric(label=f":orange[{key}]", value=value)
 
 
 def get_tab_columns():
-    col1, _, col2 =  st.columns([1, .5, 5])
+    col1, _, col2 =  st.columns([2, .5, 10])
     return col1, col2
 
 
@@ -132,7 +133,10 @@ def fig_display(fig, use_container_width=False):
     st.plotly_chart(fig, config={'displayModeBar': False}, use_container_width=use_container_width)
 
 
-def plot_data(yearly_df, cols, names, title, xlim, mode, percent=False, height=HEIGHT, width=WIDTH, colors=PLOT_COLORS):
+def get_plot(yearly_df, cols, names, title, xlim, mode, 
+             percent=False, height=HEIGHT, width=WIDTH, 
+             colors=PLOT_COLORS, line_config=None, annotation_config=None
+    ):
     hovertemplate = '$%{y:,.0f}'
     if percent:
         hovertemplate = '%{y:.1%}'  # Formats y as a percentage
@@ -183,9 +187,18 @@ def plot_data(yearly_df, cols, names, title, xlim, mode, percent=False, height=H
         height=height,
         width=width,
         hovermode='x',
+        title_font=TITLE_FONT
     )
 
     fig.update_xaxes(range=[0, xlim+1])
+
+    if line_config:
+        fig.add_shape(**line_config)
+
+    if annotation_config:
+        fig.add_annotation(**annotation_config)
+
+
     fig_display(fig)
 
 
@@ -226,7 +239,8 @@ def pie_chart(yearly_df):
         title="Monthly Expenses in First Year",
         showlegend=False, 
         height=HEIGHT,
-        width=WIDTH
+        width=WIDTH,
+        title_font=TITLE_FONT
     )
 
     fig_display(fig)
@@ -267,7 +281,20 @@ def stacked_bar(yearly_df):
         height=HEIGHT,
         width=WIDTH,
         xaxis=dict(title='Year', tickmode='array', tickvals=np.arange(5, 31, 5)),
+        title_font=TITLE_FONT
     )
 
     fig.update_xaxes(range=[0, 31])
     fig_display(fig)
+
+
+###########################################################
+#               Plot Analysis                             #
+###########################################################
+    
+def min_crossover(list_a, list_b):
+    """Return the index of the first element in list_a that is greater than list_b."""
+    for i in range(len(list_a)):
+        if list_a[i] > list_b[i]:
+            return i
+    return -1
