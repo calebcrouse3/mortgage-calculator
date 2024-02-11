@@ -10,6 +10,7 @@ python = "^3.12"
 streamlit = "^1.30.0"
 plotly = "^5.18.0"
 numpy = "^1.26.3"
+numpy-financial = "^1.0.0"
 
 [tool.poetry.group.dev.dependencies]
 aws-cdk-lib = "^2.121.1"

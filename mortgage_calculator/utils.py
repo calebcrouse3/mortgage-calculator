@@ -9,8 +9,9 @@ WIDTH = 800
 
 BLUE = "#1f77b4"
 ORANGE = "#ff7f0e"
+GREEN = "#2ca02c"
 
-PLOT_COLORS = [BLUE, ORANGE]
+PLOT_COLORS = [BLUE, ORANGE, GREEN]
 
 COLOR_MAP = {
     "interest_exp_mo":      "#0068C9",  # Blue
