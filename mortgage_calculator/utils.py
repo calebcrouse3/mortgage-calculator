@@ -140,7 +140,7 @@ def get_plot(yearly_df, cols, names, title, xlim, mode,
     ):
     hovertemplate = '$%{y:,.0f}'
     if percent:
-        hovertemplate = '%{y:.1%}'  # Formats y as a percentage
+        hovertemplate = '%{y:.2%}'  # Formats y as a percentage
 
     yaxis = dict(title='Dollars ($)', tickformat='$,.0f')
     if percent:

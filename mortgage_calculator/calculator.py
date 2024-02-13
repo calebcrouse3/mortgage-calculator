@@ -362,7 +362,7 @@ def get_yearly_agg_df(sim_df, oop, closing_costs):
     # these need to be understood and validated
     year_df["capital_gains"] = year_df["sale_income"] + year_df["cum_principal_exp"] - ss.home_price.val - ss.down_payment.val
     year_df["return"] = year_df["capital_gains"] + year_df["cum_niaf"] - closing_costs - ss.rehab.val
-    year_df["roi"] = year_df["return"] / oop
+
 
     # VALIDATED: this gives the total return for the time period up to a particular year if the home is sold
     year_df["total_return"] = year_df["cum_niaf"] + year_df["sale_income"] - oop
@@ -372,8 +372,13 @@ def get_yearly_agg_df(sim_df, oop, closing_costs):
     year_df["net_worth"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - closing_costs
     # ALMOST VALIDATED: this gives the tota rate of return for the time period up to a particular year if the home is sold
     year_df["roi"] = year_df["total_return"] / oop
-    # VALIDATED: this gives the coc return in a particular year ignoring sale income
-    year_df["coc_roi_yoy"] = year_df["niaf"] / oop
+    # VALIDATED: Annualized yearly ROI for the time period up to a particular year if the home is sold at the end of that year.
+    # Version of the CAGR formula. Also have to add 1 to index to make it number of years passed.
+    year_df["annualized_roi"] = (1+ year_df["roi"]) ** (1 / (year_df.index + 1)) - 1
+    # VALIDATED: this gives the coc return in a particular year ignoring home sale income
+    year_df["annualized_coc_roi"] = year_df["niaf"] / oop
+
+    st.write(year_df[["total_return", "roi", "annualized_roi"]])
 
     def accumulate_into_list(df, column_name):
         accumulated_lists = []
@@ -388,22 +393,27 @@ def get_yearly_agg_df(sim_df, oop, closing_costs):
         cashflows[-1] += row['sale_income']
         cashflows = [-oop] + cashflows
         return npf.irr(cashflows)
+    
+
+    def get_mirr(row):
+        cashflows = row['niaf_expanded']
+        cashflows[-1] += row['sale_income']
+        cashflows = [-oop] + cashflows
+        return npf.mirr(cashflows, ss.interest_rate.val, ss.stock_growth_rate.val)
 
     year_df["niaf_expanded"] = accumulate_into_list(year_df, "niaf")
     # VALIDATED: this is the irr. 
     # The annualized yearly return on investment for the time period up to a particular year 
     # with consideration for time value of money. Is this different than CAGR of roi?
     year_df['irr'] = year_df.apply(get_irr, axis=1)
+    year_df['mirr'] = year_df.apply(get_mirr, axis=1)
     year_df.drop("niaf_expanded", axis=1, inplace=True)
 
     # TODO:
-    # Need return on equity
-    # Is CAGR of roi the same as IRR?
-    # Is CAGR of roi valuable?
-    # How to calculate YOY ROI and is that valuable or sensible?
+    # Need return on equity?
+    # XIRR?
 
-
-    # parallel simulations
+    # parallel simulations. Need to get Net worth of these simulations
     year_df["renting_profit"] = year_df["rent_comparison_portfolio"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
     year_df["extra_payments_portfolio"] = year_df["extra_payments_portfolio"] * (1 - ss.capital_gains_tax_rate.val)
 
@@ -642,6 +652,7 @@ def calculate_and_display():
             tab_total_return,
             tab_net_worth,
             tab_roi,
+            tab_annualized_roi,
             tab_irr,
             tab_net_income,
         ) = st.tabs([ 
@@ -650,6 +661,7 @@ def calculate_and_display():
             "Total Return",
             "Net Worth",
             "ROI",
+            "Annualized ROI",
             "IRR",
             "Net Income",
         ])
@@ -675,7 +687,7 @@ def calculate_and_display():
                          income. Its the cash flow in a particular year divided by the total out of pocket cash
                          initially invested.""")
 
-                cols = ["coc_roi_yoy"]
+                cols = ["annualized_coc_roi"]
                 names= ["Cash on Cash ROI"]
                 title = "Cash on Cash ROI Year over Year"
                 get_plot_ss(yearly_df, cols, names, title, percent=True)
@@ -736,6 +748,22 @@ def calculate_and_display():
                 cols = ["roi"]
                 names= ["ROI"]
                 title = "Return on Investment (ROI)"
+                get_plot_ss(yearly_df, cols, names, title, percent=True)
+
+
+        with tab_annualized_roi:
+            col1, col2 = get_tab_columns()
+
+            with col1:
+                dict_to_metrics(results["investment_metrics"])
+
+            with col2:
+                st.write("""This is the annualized yearly return on investment for the time period up to a particular year 
+                         if the home is sold at the end of that year. This is the same as the ROI, but annualized.""")
+
+                cols = ["annualized_roi", "irr", "mirr"]
+                names= ["Annualized ROI", "IRR", "MIRR"]
+                title = "Annualized Return on Investment"
                 get_plot_ss(yearly_df, cols, names, title, percent=True)
 
 
