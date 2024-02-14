@@ -49,12 +49,15 @@ class SessionStateInterface:
         self.xlim = create(30)
         self.chart_mode = create("Lines")
         self.capital_gains_tax_rate = create(15.0, rate=True)
-        self.stock_growth_rate = create(7.0, rate=True)
         self.income_tax_rate = create(25.0, rate=True)
         self.realtor_rate = create(6.0, rate=True)
 
-        self.mo_extra_payment = create(0)
-        self.num_extra_payments = create(0)
+        self.mo_extra_payment = create(300)
+        self.num_extra_payments = create(12)
+
+        self.discount_rate = create(4.0, rate=True)
+        self.extra_payments_portfolio_growth = create(4.0, rate=True)
+        self.rent_surplus_portfolio_growth = create(4.0, rate=True)
 
 
     # Define counter_generator as a static method so it can be called without an instance

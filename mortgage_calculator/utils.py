@@ -276,7 +276,7 @@ def stacked_bar(yearly_df):
         ))
         
     fig.update_layout(
-        title="Monthly Expenses Over Time",
+        title="Monthly Expenses Over Time (Hope they see this down here)",
         yaxis=dict(title='Dollars ($)', tickformat='$,.0f'),
         barmode='stack',
         height=HEIGHT,
