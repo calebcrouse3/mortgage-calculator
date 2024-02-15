@@ -3,8 +3,10 @@
 - Tooltips with hover over and no (?)
 - ICB ads
 - Insurance default value / estimation
+- Review and expand tax and sale assumptions for taxes and homes on different time lines
 - Save selected chart lines to session state
 - About page
+- More solid white line at 0 for charts
 - Chart hover over so red or green for profit or loss
 - Specifics of capital gains and how it effects stock and home sale price
     - The 2 year window for capital gains tax free sale

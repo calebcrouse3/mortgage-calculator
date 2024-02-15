@@ -49,13 +49,23 @@ def dict_to_metrics(data_dict):
 
 
 def get_tab_columns():
-    col1, _, col2 =  st.columns([2, .5, 10])
+    col1, _, col2 =  st.columns([4, .3, 12])
     return col1, col2
 
 
 ###########################################################
 #               Input field functions                     #
 ###########################################################
+
+
+def rate_selectbox_input(label, options, key, help=None):
+    percent = st.selectbox(
+        label=f"{label} (%)",
+        key=key,
+        options=options,
+        help=help
+    )
+    return percent
 
 
 def rate_input(label, key=None, min_value=0.0, max_value=99.0, step=0.1, asterisk=False, help=None):

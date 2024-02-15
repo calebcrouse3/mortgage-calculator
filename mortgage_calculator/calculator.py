@@ -8,7 +8,7 @@ import numpy_financial as npf
 
 from utils import *
 from utils_finance import *
-from session_state_interface import SessionStateInterface
+from session_state_interface import SessionStateInterface, ALT_INVESTMENTS
 
 
 st.set_page_config(layout="wide")
@@ -60,6 +60,7 @@ def expenses_inputs():
 
 def economic_factors_inputs():
     with st.expander("Economy", expanded=False):
+        st.write("Assumptions about growth rates in the economy and housing market.")
         populate_columns([
             lambda: rate_input("Home Appreciation", ss.yr_home_appreciation.key),
             lambda: rate_input("Inflation Rate", ss.yr_inflation_rate.key),   
@@ -67,12 +68,6 @@ def economic_factors_inputs():
         populate_columns([
             lambda: rate_input("Yearly Rent Increase", ss.yr_rent_increase.key)
         ], 2)
-
-
-def discount_rate_inputs():
-    populate_columns([
-        lambda: rate_input("Discount Rate MOVE THIS", ss.discount_rate.key),
-    ], 2)
 
 
 def rent_income_inputs():
@@ -105,7 +100,6 @@ def selling_inputs():
 def reset_inputs():
     populate_columns([
         lambda: st.button("Reset Inputs", on_click=ss.clear),
-        #lambda: st.button("Calculate"),
     ], 2)
 
 
@@ -125,7 +119,7 @@ def rent_vs_own_inputs():
                 help="This is the monthly rent you would pay instead of buying the home in consideration."),
         ], 1)
         populate_columns([
-            lambda: rate_input("Alternate Investment Return", ss.rent_surplus_portfolio_growth.key, 
+            lambda: rate_selectbox_input("Alt. Investment", options=ALT_INVESTMENTS.keys(), key=ss.rent_surplus_portfolio_growth.key,
                 help="This is the growth rate an alternative investment with an acceptable risk factor. For example, a bond portfolio."),
         ], 1)
 
@@ -142,7 +136,7 @@ def extra_payment_inputs():
                 help="Number of months to make extra payments starting from month 1"),
         ], 1)
         populate_columns([
-            lambda: rate_input("Alternate Investment Return", ss.extra_payments_portfolio_growth.key, 
+            lambda: rate_selectbox_input("Alt. Investment", options=ALT_INVESTMENTS.keys(), key=ss.extra_payments_portfolio_growth.key,
                 help="This is the growth rate on an alternate investment with simimlar low risk. For example, a bond portfolio."),
         ], 1)
 
@@ -190,7 +184,6 @@ def get_monthly_sim_df(oop, loan_amount, monthly_payment, extra_payments):
     pmi_required = pmi_exp > 0
 
     # Stock portfolio comparisons
-    total_expense_portfolio = oop # portfolio funded with all homeownership expenses. Captured by ROE?
     rent_comparison_portfolio = oop # portfolio funded with money saved from renting
     extra_payments_portfolio = 0 # portfolio funded with extra payments
 
@@ -382,51 +375,27 @@ def get_yearly_agg_df(sim_df, oop, closing_costs):
     # ALMOST VALIDATED: This is the total net value of assets (cash and property) at the end of the year. 
     # Not sure if using sale income or equity is better. What does "net worth" imply?. 
     # Depends on if you still own the home or not I guess.
-    year_df["net_worth"] = year_df["cum_niaf"] + year_df["equity"] - ss.rehab.val - closing_costs
+    year_df["net_worth_post_sale"] = year_df["cum_niaf"] + year_df["sale_income"] - ss.rehab.val - closing_costs
+    
+    
     # ALMOST VALIDATED: this gives the tota rate of return for the time period up to a particular year if the home is sold
     year_df["roi"] = year_df["total_return"] / oop
     # VALIDATED: Annualized yearly ROI for the time period up to a particular year if the home is sold at the end of that year.
     # Version of the CAGR formula. Also have to add 1 to index to make it number of years passed.
-    year_df["annualized_roi"] = (1+ year_df["roi"]) ** (1 / (year_df.index + 1)) - 1
+    year_df["annualized_roi"] = (1 + year_df["roi"]) ** (1 / (year_df.index + 1)) - 1
     # VALIDATED: this gives the coc return in a particular year ignoring home sale income
     year_df["annualized_coc_roi"] = year_df["niaf"] / oop
-
-
-    def accumulate_into_list(df, column_name):
-        accumulated_lists = []
-        accumulator = []
-        for number in df[column_name]:
-            accumulator.append(number)
-            accumulated_lists.append(accumulator.copy())
-        return accumulated_lists
+    # VALIDATE: Return on equity is the annual return divided by the equity in the home
+    # This probably needs to be altered to reflect the equity at the beginning of the year, or even use the sale income at the beginning of the year
+    # And the return should probably also include appreciation of the home
+    #year_df["start_equity"] = year_df["equity"].shift(1)
+    year_df["start_sale_income"] = year_df["sale_income"].shift(1)
+    #year_df["start_sale_income"].iloc[0] = ss.down_payment.val * (1 - ss.realtor_rate.val)
+    year_df["annual_roe"] = (year_df["sale_income"] - year_df["start_sale_income"] + year_df["niaf"]) / year_df["start_sale_income"]
     
-    def get_irr(row):
-        cashflows = row['niaf_expanded']
-        cashflows[-1] += row['sale_income']
-        cashflows = [-oop] + cashflows
-        return npf.irr(cashflows)
-
-    def get_mirr(row):
-        cashflows = row['niaf_expanded']
-        cashflows[-1] += row['sale_income']
-        cashflows = [-oop] + cashflows
-        return npf.mirr(cashflows, ss.interest_rate.val, ss.discount_rate.val)
-
-
-    year_df["niaf_expanded"] = accumulate_into_list(year_df, "niaf")
-    # VALIDATED: this is the irr. 
-    # The annualized yearly return on investment for the time period up to a particular year 
-    # with consideration for time value of money. Is this different than CAGR of roi?
-    year_df['irr'] = year_df.apply(get_irr, axis=1)
-    year_df['mirr'] = year_df.apply(get_mirr, axis=1)
-    year_df.drop("niaf_expanded", axis=1, inplace=True)
-
-    # TODO:
-    # Need return on equity?
-    # XIRR?
-
+    
     # parallel simulations. Need to get Net worth of these simulations
-    year_df["renting_net_worth"] = year_df["rent_comparison_portfolio"] * (1- ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
+    year_df["renting_net_worth"] = year_df["rent_comparison_portfolio"] * (1 - ss.capital_gains_tax_rate.val) - year_df["cum_rent_exp"]
     year_df["extra_payments_portfolio"] = year_df["extra_payments_portfolio"] * (1 - ss.capital_gains_tax_rate.val)
 
     return year_df
@@ -447,7 +416,7 @@ def get_mortgage_metrics(df, oop, loan_amount, closing_costs):
 
 def get_investment_metrics(df, oop):
     # opr_metrics. Monthly income / OOP
-    opr = df.loc[0, "rent_income_mo"] / oop
+    opr = df.loc[0, "rent_income_mo"] / ss.home_price.val
     formatted_opr = format_percent(opr)
 
     GRM = 0 
@@ -457,8 +426,8 @@ def get_investment_metrics(df, oop):
     return  {
         "Gross Rental Multiplier": GRM,
         "Cap Rate": format_percent(df.loc[0, "noi"] / ss.home_price.val),
-        "Mo. Cash Flow": format_currency(df.loc[0, "niaf_mo"]),
-        "First Year ROI": format_percent(df.loc[0, "roi"]),
+        "First Mo. Cash Flow": format_currency(df.loc[0, "niaf_mo"]),
+        "5 Year Annualized ROI": format_percent(df.loc[4, "annualized_roi"]),
         "1% Rule": f"Yes {formatted_opr}" if opr >= 0.01 else f"No {formatted_opr}",
     }
 
@@ -565,15 +534,15 @@ def calculate_and_display():
                      with have a greater effect on the interest savings the earlier they are made.""")
 
         extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
-        append_cols = ["net_worth", "extra_payments_portfolio", "loan_balance", "extra_payment_exp"]
+        append_cols = ["net_worth_post_sale", "extra_payments_portfolio", "loan_balance", "extra_payment_exp"]
         merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
 
         # add regular profit with extra payment portfolio from extra_payments_df which has been joined
-        merged_df["portfolio_nw"] = merged_df["net_worth"] + merged_df["ep_extra_payments_portfolio"]
+        merged_df["portfolio_nw"] = merged_df["net_worth_post_sale"] + merged_df["ep_extra_payments_portfolio"]
 
         # get delta for both simluations against just regulat profit
-        merged_df["portfolio_nw_delta"] = merged_df["portfolio_nw"] - merged_df["net_worth"]
-        merged_df["ep_nw_delta"] = merged_df["ep_net_worth"] - merged_df["net_worth"]
+        merged_df["portfolio_nw_delta"] = merged_df["portfolio_nw"] - merged_df["net_worth_post_sale"]
+        merged_df["ep_nw_delta"] = merged_df["ep_net_worth_post_sale"] - merged_df["net_worth_post_sale"]
 
         # remove any rows after the first row with a loan balance of 0
         zero_index = merged_df[merged_df["ep_loan_balance"] == 0].index[0]
@@ -644,9 +613,10 @@ def calculate_and_display():
             rent_vs_own_inputs()
 
         with col2:
-            cols = ["net_worth", "renting_net_worth"]
+            #yearly_df["rent_vs_own_net_worth"] = yearly_df["net_worth_post_sale"] - yearly_df["renting_net_worth"]
+            cols = ["net_worth_post_sale", "renting_net_worth"]
             names= ["Own", "Rent"]
-            title = "Rent vs Own Net Worth"
+            title = "Rent vs Own Total Net Worth "
             get_plot_ss(yearly_df, cols, names, title)
 
 
@@ -655,166 +625,58 @@ def calculate_and_display():
     ########################################################################
 
     with tab_investing:
-        st.write("Need to condense")
+        st.write("""This catgory shows common figures and metrics used to asses the quality of a
+                    rental investment. This will be most useful if you plan on making some rental income 
+                    with this property, but many of the figures are still useful in just assessing
+                    home ownership as an invesment. If you havent spent time analysing rental properties,
+                    the terms and figures here might be confusing or unfamiliar. Navigate to the 'About' tab
+                    to learn more about these concepts and how to use them.""")
 
+        col1, col2 = get_tab_columns()
 
-        st.write("Select Chart:")
-        (
-            intro,
-            tab_yoy_coc,
-            tab_total_return,
-            tab_net_worth,
-            tab_roi,
-            tab_annualized_roi,
-            tab_irr,
-            tab_net_income,
-        ) = st.tabs([ 
-            "Category Intro",
-            "YoY Cash on Cash ROI",
-            "Total Return",
-            "Net Worth",
-            "ROI",
-            "Annualized ROI",
-            "IRR",
-            "Net Income",
-        ])
+        with col1:
+            dict_to_metrics(results["investment_metrics"])
 
+        with col2:
+            cols = ["niaf_mo", "total_exp_mo", "total_income_mo"]
+            names= ["Mo Cashflow", "Mo Expenses", "Mo Income"]
+            title = "Monthly Cashflow"
+            get_plot_ss(yearly_df, cols, names, title)
+    
+            cols = ["annualized_roi", "annualized_coc_roi", "annual_roe"]
+            names= ["Annualized ROI", "Annual COC ROI", "Annual ROE"]
+            title = "Annualized ROI, ROE, and COC ROI"
+            get_plot_ss(yearly_df, cols, names, title, percent=True)
 
-        with intro:
-            st.write("""This catgory shows common figures and metrics used to asses the quality of a
-                     rental investment. This will be most useful if you plan on making some rental income 
-                     with this property, but many of the figures are still useful in just assessing
-                     home ownership as an invesment. If you havent spent time analysing rental properties,
-                     the terms and figures here might be confusing or unfamiliar. Navigate to the 'About' tab
-                     to learn more about these concepts and how to use them.""")
+        dollar_cols = ["total_income", "total_exp", "niaf", "home_value", 
+                       "loan_balance", "equity", "sale_income", "total_return"]
+        
+        decimal_cols = ["annualized_roi", "annual_roe", "annualized_coc_roi"]
 
+        polished_df = yearly_df[dollar_cols + decimal_cols]
+        polished_df[dollar_cols] = polished_df[dollar_cols].round()
+        polished_df[dollar_cols] = polished_df[dollar_cols].applymap(format_currency)
+        polished_df[decimal_cols] = polished_df[decimal_cols].apply(lambda x: round(x * 100, 1))
+        polished_df[decimal_cols] = polished_df[decimal_cols].astype(str) + "%"
+        polished_df.index.name = "Year"
+        polished_df.index += 1
 
-        with tab_yoy_coc:
-            col1, col2 = get_tab_columns()
+        rename_dict = {
+            "total_income": "Income",
+            "total_exp": "Expenses",
+            "niaf": "Cash FLow",
+            "home_value": "Home Value",
+            "equity": "Equity",
+            "sale_income": "Sale Income",
+            "total_return": "Total Return",
+            "annualized_roi": "Annualized ROI",
+            "annual_roe": "Annual ROE",
+            "annualized_coc_roi": "Annual COC ROI"
+        }
 
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This gives the cash on cash return in a particular year ignoring any proprty sale 
-                         income. Its the cash flow in a particular year divided by the total out of pocket cash
-                         initially invested.""")
-
-                cols = ["annualized_coc_roi"]
-                names= ["Cash on Cash ROI"]
-                title = "Cash on Cash ROI Year over Year"
-                get_plot_ss(yearly_df, cols, names, title, percent=True)
-
-
-        with tab_total_return:
-            col1, col2 = get_tab_columns()
-
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""this gives the total return after a number of years if the home is sold at the end of the year.
-                         It captures the profit from income (or loss if income doesnt cover all expenses), 
-                         and the after tax/fee profit from selling the home at the end of a particular year. 
-                         This is calculated as the after tax/fee sale income from the home (which depends on how much equity 
-                         you have in the home) minus the out of pocket cash initially invested including the downpayment. Some might refer to the
-                         total return as the total profit, but generally the term profit should only be
-                         used when referring to the rental income that a property generates. The total return 
-                         includes this profit and the money from the sale of the home.""")
-
-                cols = ["total_return", "cum_niaf"]
-                names= ["Total Return", "Cumulative Cash Income"]
-                title = "Total Return on Investment"
-                get_plot_ss(yearly_df, cols, names, title)
-
-
-        with tab_net_worth:
-            col1, col2 = get_tab_columns()
-
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This assumes your net worth before making any home purchase is 0 and so your net worth at the end of any year
-                         is any profit (or loss) from owning the property as well as the amount of equity in the home at the end of the year.
-                         This encompasses the total net value of assets (cash and property) you have.
-                         Its basically the same at total return ecxept it uses the equity in the home instead of profit from selling the home.
-                         Meaning the down payment is still part of you networth, unlike your total return,
-                         and you didnt have to pay fees to sell the home.""")
-
-                cols = ["net_worth"]
-                names= ["Net Worth"]
-                title = "Net Worth"
-                get_plot_ss(yearly_df, cols, names, title)
-
-
-        with tab_roi:
-            col1, col2 = get_tab_columns()
-            
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This is the total RATE of return for the time period up to a particular year if the home is sold.
-                         It is just the total return after a number of years divide by the out of pocket costs initially invested.""")
-
-                cols = ["roi"]
-                names= ["ROI"]
-                title = "Return on Investment (ROI)"
-                get_plot_ss(yearly_df, cols, names, title, percent=True)
-
-
-        with tab_annualized_roi:
-            col1, col2 = get_tab_columns()
-
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This is the annualized yearly return on investment for the time period up to a particular year 
-                         if the home is sold at the end of that year. This is the same as the ROI, but annualized.""")
-
-                cols = ["annualized_roi", "irr", "mirr"]
-                names= ["Annualized ROI", "IRR", "MIRR"]
-                title = "Annualized Return on Investment"
-                get_plot_ss(yearly_df, cols, names, title, percent=True)
-
-
-        with tab_irr:
-            col1, col2 = get_tab_columns()
-
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This is the internal rate of return for the time period up to a 
-                         particular year if the home is sold at the end of that year.
-                         The IRR is the annualized yearly return on investment for the time period up to a particular year 
-                         discounted by the time value of money. One way to interpret the IRR is that you would make as much money
-                         on this investment as you would if you had invested the out of pocket cash in a different investment
-                         with this growth rate. This isnt quite right because its the hurdle discount rate which 
-                         factors in risk as well as returns. Explore more.
-                         """)
-                
-                cols = ["irr"]
-                names= ["IRR"]
-                title = "Internal Rate of Return If home sold that year"
-                get_plot_ss(yearly_df, cols, names, title, percent=True)
-
-        with tab_net_income:
-            col1, col2 = get_tab_columns()
-
-            with col1:
-                dict_to_metrics(results["investment_metrics"])
-
-            with col2:
-                st.write("""This is the monthly net operating income and net income after financing (cash flow)
-                         for each year.""")
-
-                cols = ["noi_mo", "niaf_mo"]
-                names= ["Monthly NOI", "Monthly NIAF"]
-                title = "Monthly Net Income"
-                get_plot_ss(yearly_df, cols, names, title)
+        polished_df.rename(columns=rename_dict, inplace=True)
+        st.write("Year End Metrics")
+        st.write(polished_df[rename_dict.values()])
 
 
     ########################################################################
@@ -874,7 +736,6 @@ def main():
             economic_factors_inputs()
             selling_inputs()
             chart_disaply_inputs()
-            discount_rate_inputs()
         reset_inputs()
     
     calculate_and_display()
