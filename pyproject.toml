@@ -11,6 +11,8 @@ streamlit = "^1.30.0"
 plotly = "^5.18.0"
 numpy = "^1.26.3"
 numpy-financial = "^1.0.0"
+geopandas = "^0.14.3"
+folium = "^0.15.1"
 
 [tool.poetry.group.dev.dependencies]
 aws-cdk-lib = "^2.121.1"

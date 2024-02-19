@@ -676,7 +676,7 @@ def calculate_and_display():
 
         polished_df.rename(columns=rename_dict, inplace=True)
         st.write("Year End Metrics")
-        st.write(polished_df[rename_dict.values()])
+        st.write(polished_df[list(rename_dict.values())])
 
 
     ########################################################################
