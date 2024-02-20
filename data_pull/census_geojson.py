@@ -1,3 +1,9 @@
+"""
+This downloads the shapefiles from the US Census Bureau 
+and extracts them to the data/shapefiles directory.
+"""
+
+
 import requests
 from zipfile import ZipFile
 from io import BytesIO

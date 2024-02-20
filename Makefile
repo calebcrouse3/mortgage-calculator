@@ -2,7 +2,7 @@ run:
 	@poetry run streamlit run mortgage_calculator/calculator.py
 
 run-maps:
-	@poetry run streamlit run maps/maps.py
+	@poetry run streamlit run maps/zipcodes.py
 
 run-sandbox:
 	@poetry run streamlit run mortgage_calculator/sandbox.py
