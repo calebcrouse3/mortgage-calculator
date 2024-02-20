@@ -4,9 +4,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import json
-import os
-from mortgage_calculator.utils import fig_display
-from state_fips import state_fips_codes
+from data.state_fips import state_fips_codes
 
 st.set_page_config(layout="wide")
 
