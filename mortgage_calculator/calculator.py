@@ -42,13 +42,13 @@ class MortgageInputs:
     closing_costs: float = None
     cash_outlay: float = None
     loan_amount: float = None
-    monthly_payment: float = None
+    mo_amortized: float = None
 
     def __post_init__(self):
         self.closing_costs = self.home_price * self.closing_costs_rate
         self.cash_outlay = self.closing_costs + self.down_payment + self.rehab
         self.loan_amount = self.home_price - self.down_payment
-        self.monthly_payment = get_amortization_payment(self.loan_amount, self.interest_rate)
+        self.mo_amortized = get_amortization_payment(self.loan_amount, self.interest_rate)
 
 @dataclass
 class ExpensesInputs:
@@ -63,14 +63,6 @@ class EconomicFactorsInputs:
     yr_home_appreciation: float = 0.03
     yr_inflation_rate: float = 0.03
     yr_rent_increase: float = 0.03
-    
-@dataclass
-class RentalIncomeInputs:
-    mo_rent_income: int = 0
-    mo_other_income: int = 0
-    vacancy_rate: float = 0.05
-    management_rate: float = 0.1
-    income_tax_rate: float = 0.25
 
 @dataclass
 class SellingInputs:
@@ -80,7 +72,7 @@ class SellingInputs:
 @dataclass
 class RentVsOwnInputs:
     # This is the monthly rent you would pay instead of buying the home in consideration
-    rent_exp: int = 1500
+    mo_rent_comparison_exp: int = 1500
     # This is the growth rate an alternative investment with an acceptable risk factor. For example, a bond portfolio.
     rent_surplus_portfolio_growth: float = 0.04
 
@@ -88,6 +80,7 @@ class RentVsOwnInputs:
 class ExtraPaymentInputs:
     mo_extra_payment: int = 300
     num_extra_payments: int = 12
+    # Compare putting money into your home versus investing in an alternative
     extra_payments_portfolio_growth: float = 0.04
 
 @dataclass
@@ -95,7 +88,6 @@ class Inputs(
     MortgageInputs,
     ExpensesInputs,
     EconomicFactorsInputs,
-    RentalIncomeInputs,
     SellingInputs,
     RentVsOwnInputs,
     ExtraPaymentInputs
@@ -139,10 +131,7 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
     maintenance_exp = inputs.home_price * inputs.yr_maintenance / 12
     hoa_exp = inputs.mo_hoa_fees
     utility_exp = inputs.mo_utility
-    rent_income = inputs.mo_rent_income
-    other_income = inputs.mo_other_income
-    management_exp = inputs.management_rate * rent_income
-    rent_exp = inputs.rent_exp
+    rent_comparison_exp = inputs.mo_rent_comparison_exp
 
     ########################################################################
     #      initialize, updated monthly                                     #
@@ -165,7 +154,7 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
         ########################################################################
 
         interest_exp = loan_balance * inputs.interest_rate / 12
-        principal_exp = inputs.monthly_payment - interest_exp
+        principal_exp = inputs.mo_amortized - interest_exp
         extra_payment_exp = 0
 
         # extra payments are the only time we might need to adjust principle exp
@@ -179,32 +168,12 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
         loan_balance -= extra_payment_exp
 
         ########################################################################
-        #      Expenses                                                        #
+        #      PMI                                                             #
         ########################################################################
 
         # pay pmi if required
         if not pmi_required:
             pmi_exp = 0
-
-        op_exp = (
-            property_tax_exp +
-            insurance_exp +
-            hoa_exp +
-            maintenance_exp +
-            pmi_exp +
-            utility_exp +
-            management_exp
-        )
-
-        total_exp = op_exp + interest_exp + principal_exp + extra_payment_exp
-        total_income = rent_income + other_income
-        adj_total_income = total_income * (1 - inputs.vacancy_rate)
-        noi = adj_total_income - op_exp
-        niaf = adj_total_income - total_exp
-
-        # apply income tax to profits
-        if niaf > 0:
-            niaf *= (1 - inputs.income_tax_rate)
 
         # update pmi_required, but dont update pmi cost unless its end of year
         pmi_true = get_monthly_pmi(home_value, loan_balance, inputs.pmi_rate, inputs.home_price)
@@ -213,18 +182,29 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
         ########################################################################
         #      Growth During Month                                             #
         ########################################################################
+        
+        # Sum of all the expenses for the month
+        total_exp = (
+            property_tax_exp +
+            insurance_exp +
+            hoa_exp +
+            maintenance_exp +
+            pmi_exp +
+            utility_exp +
+            interest_exp +
+            principal_exp +
+            extra_payment_exp
+        )
 
-        # contribute to portfolio if money saved from renting
-        if total_exp > rent_exp:
-            rent_comparison_portfolio += total_exp - rent_exp
+        # contribute to portfolio if you saved money from renting
+        rent_comparison_portfolio += max(0, total_exp - rent_comparison_exp)
 
         # contribute any extra payments to portfolio
-        if extra_payment_exp > 0:
-            extra_payments_portfolio += extra_payment_exp
+        extra_payments_portfolio += extra_payment_exp
 
         home_value = add_growth(home_value, inputs.yr_home_appreciation, months=1)
         rent_comparison_portfolio = add_growth(
-            rent_comparison_portfolio, 
+            rent_comparison_portfolio,
             inputs.rent_surplus_portfolio_growth, 
             months=1
         )
@@ -238,7 +218,7 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
             "index": month,
             "year": month // 12,
             "month": month % 12,
-            # Costs, payments, revenue. Monthly Totals.
+            # Expenses
             "interest_exp": interest_exp,
             "principal_exp": principal_exp,
             "property_tax_exp": property_tax_exp,
@@ -247,21 +227,15 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
             "maintenance_exp": maintenance_exp,
             "pmi_exp": pmi_exp,
             "utility_exp": utility_exp,
-            "management_exp": management_exp,
-            "op_exp": op_exp,
             "total_exp": total_exp,
-            "rent_income": rent_income,
-            "other_income": other_income,
-            "total_income": total_income,
-            "adj_total_income": adj_total_income,
-            "noi": noi,
-            "niaf": niaf,
-            "rent_exp": rent_exp,
-            "extra_payment_exp": extra_payment_exp,
-            # Balances and values. End of month.
+            # Balances and Values
             "loan_balance": loan_balance,
             "home_value": home_value,
+            # Rent Comparison
+            "rent_comparison_exp": rent_comparison_exp,
             "rent_comparison_portfolio": rent_comparison_portfolio,
+            # Extra Payments
+            "extra_payments_exp": extra_payment_exp,
             "extra_payments_portfolio": extra_payments_portfolio
         }
         data.append(month_data)
@@ -277,10 +251,7 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
             utility_exp = add_growth(utility_exp, inputs.yr_inflation_rate, 12)
             maintenance_exp = home_value * inputs.yr_maintenance / 12
             pmi_exp = pmi_true
-            rent_income = add_growth(rent_income, inputs.yr_rent_increase, 12)
-            other_income = add_growth(other_income, inputs.yr_rent_increase, 12)
-            management_exp = inputs.management_rate * rent_income
-            rent_exp = add_growth(rent_exp, inputs.yr_rent_increase, 12)
+            rent_comparison_exp = add_growth(rent_comparison_exp, inputs.yr_rent_increase, 12)
 
     return pd.DataFrame(data).set_index("index")
 
@@ -293,10 +264,17 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
 
     # List of columns for sum and mean aggregations
     sum_mean_cols = [
-            "interest_exp", "principal_exp", "property_tax_exp", "insurance_exp",
-            "hoa_exp", "maintenance_exp", "pmi_exp", "utility_exp", "management_exp",
-            "op_exp", "total_exp", "rent_income", "other_income", "total_income",
-            "adj_total_income", "noi", "niaf", "rent_exp", "extra_payment_exp"
+            "interest_exp", 
+            "principal_exp", 
+            "property_tax_exp", 
+            "insurance_exp",
+            "hoa_exp", 
+            "maintenance_exp", 
+            "pmi_exp", 
+            "utility_exp",
+            "total_exp", 
+            "rent_comparison_exp",
+            "extra_payment_exp"
     ]
 
     agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
@@ -328,8 +306,7 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
     rename_columns(year_df)
 
     cumsum_cols = [
-        "niaf",
-        "rent_exp",
+        "rent_comparison_exp",
         "interest_exp",
         "principal_exp",
     ]
@@ -337,74 +314,23 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
     for col in cumsum_cols:
         year_df[f'cum_{col}'] = year_df[col].cumsum()
 
-    # VALIDATED: this is the amount of ownership of the home you have at the end of the year
+
     year_df["equity"] = year_df["home_value"] - year_df["loan_balance"]
-    # VALIDATED: this gives the total income from selling the home in a particular year which factors in seling costs
     year_df["sale_income"] = year_df["equity"] - (year_df["home_value"] * inputs.realtor_rate)
-    
-    # these need to be understood and validated
     year_df["capital_gains"] = year_df["sale_income"] + year_df["cum_principal_exp"] - inputs.home_price - inputs.down_payment
-    year_df["return"] = year_df["capital_gains"] + year_df["cum_niaf"] - inputs.closing_costs - inputs.rehab
 
-
-    # VALIDATED: this gives the total return for the time period up to a particular year if the home is sold
-    year_df["total_return"] = year_df["cum_niaf"] + year_df["sale_income"] - inputs.cash_outlay
-    # ALMOST VALIDATED: This is the total net value of assets (cash and property) at the end of the year. 
-    # Not sure if using sale income or equity is better. What does "net worth" imply?. 
-    # Depends on if you still own the home or not I guess.
     year_df["net_worth_post_sale"] = year_df["cum_niaf"] + year_df["sale_income"] - inputs.rehab - inputs.closing_costs
-    
-    
-    # ALMOST VALIDATED: this gives the tota rate of return for the time period up to a particular year if the home is sold
-    year_df["roi"] = year_df["total_return"] / inputs.cash_outlay
-    # VALIDATED: Annualized yearly ROI for the time period up to a particular year if the home is sold at the end of that year.
-    # Version of the CAGR formula. Also have to add 1 to index to make it number of years passed.
-    year_df["annualized_roi"] = (1 + year_df["roi"]) ** (1 / (year_df.index + 1)) - 1
-    # VALIDATED: this gives the coc return in a particular year ignoring home sale income
-    year_df["annualized_coc_roi"] = year_df["niaf"] / inputs.cash_outlay
-    # VALIDATE: Return on equity is the annual return divided by the equity in the home
-    # This probably needs to be altered to reflect the equity at the beginning of the year, or even use the sale income at the beginning of the year
-    # And the return should probably also include appreciation of the home
-    #year_df["start_equity"] = year_df["equity"].shift(1)
-    year_df["start_sale_income"] = year_df["sale_income"].shift(1)
-    #year_df["start_sale_income"].iloc[0] = ss.down_payment.val * (1 - ss.realtor_rate.val)
-    year_df["annual_roe"] = (year_df["sale_income"] - year_df["start_sale_income"] + year_df["niaf"]) / year_df["start_sale_income"]
-    
-    
-    # parallel simulations. Need to get Net worth of these simulations
     year_df["renting_net_worth"] = year_df["rent_comparison_portfolio"] * (1 - inputs.capital_gains_tax_rate) - year_df["cum_rent_exp"]
     year_df["extra_payments_portfolio"] = year_df["extra_payments_portfolio"] * (1 - inputs.capital_gains_tax_rate)
 
     return year_df
 
 
-def get_mortgage_metrics(inputs: Inputs, yearly_df: pd.DataFrame):
+def get_mortgage_metrics(yearly_df: pd.DataFrame):
     return {
-        "Down Payment": inputs.down_payment,
-        "Rehab": inputs.rehab,
-        "Closing Costs": inputs.closing_costs,
-        "Cash Outlay": inputs.cash_outlay,
-        "Loan Amount": inputs.loan_amount,
         "Total PMI Paid": yearly_df["pmi_exp"].sum(),
         "Total Taxes Paid": yearly_df["property_tax_exp"].sum(),
         "Total Interest Paid": yearly_df["interest_exp"].sum(),
-    }
-
-
-def get_investment_metrics(inputs: Inputs, yearly_df: pd.DataFrame):
-    # opr_metrics. Monthly income / cash_outlay
-    opr = yearly_df.loc[0, "rent_income_mo"] / inputs.home_price
-
-    GRM = 0 
-    if yearly_df.loc[0, "rent_income"] > 0:
-        GRM = int(yearly_df.loc[0, "home_value"] / yearly_df.loc[0, "rent_income"])
-
-    return  {
-        "Gross Rental Multiplier": GRM,
-        "Cap Rate": yearly_df.loc[0, "noi"] / inputs.home_price,
-        "First Mo. Cash Flow": yearly_df.loc[0, "niaf_mo"],
-        "5 Year Annualized ROI": yearly_df.loc[4, "annualized_roi"],
-        "1% Rule": f"Yes {opr}" if opr >= 0.01 else f"No {opr}",
     }
 
 
@@ -413,18 +339,16 @@ def get_all_simulation_data(inputs: Inputs, extra_payments: bool = False):
     yearly_df = get_yearly_agg_df(inputs, monthly_df)
 
     mortgage_metrics = get_mortgage_metrics(inputs, yearly_df)
-    investment_metrics = get_investment_metrics(inputs, yearly_df)
 
     results = {
         "yearly_df": yearly_df,
         "mortgage_metrics": mortgage_metrics,
-        "investment_metrics": investment_metrics,
     }
 
     return results
 
 
-def calculate_and_display():
+def calculate():
 
     results = get_all_simulation_data(include_metrics=True)
     yearly_df = results["yearly_df"]
