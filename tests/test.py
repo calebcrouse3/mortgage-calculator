@@ -1,6 +1,6 @@
 import unittest
 
-from src.utils import *
+from mortgage_calculator.utils import *
 
 class TestFinancialFunctions(unittest.TestCase):
 
