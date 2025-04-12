@@ -1,5 +1,11 @@
 """Financial calculations helper functions"""
 
+
+########################################################################
+#      Finance                                          
+########################################################################
+
+
 def get_amortization_payment(loan_amount, interest_rate, years=30):
     monthly_rate = interest_rate / 12
     n_payments = years * 12
@@ -57,3 +63,26 @@ def get_monthly_pmi(home_value, loan_balance, pmi_rate, init_home_value):
         return 0
     else:
         return (loan_balance * pmi_rate) / 12
+
+    
+########################################################################
+#      Other                                          
+########################################################################
+
+
+def merge_simulations(sim_df_a, sim_df_b, append_cols, prefix):
+        """
+        Sim df A keeps all it columns
+        Sim df B keeps the merge columns with a prefix and is joined to sim df A on index
+        """
+        sim_df_b = sim_df_b[append_cols]
+        sim_df_b = sim_df_b.rename(columns={col: f"{prefix}_{col}" for col in append_cols})
+        return sim_df_a.join(sim_df_b)
+
+
+def min_crossover(list_a, list_b):
+    """Return the index of the first element in list_a that is greater than list_b."""
+    for i in range(len(list_a)):
+        if list_a[i] > list_b[i]:
+            return i
+    return -1
