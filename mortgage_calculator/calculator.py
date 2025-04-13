@@ -262,88 +262,52 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
     analysis and visualization. This function also calculates some derived metrics for plotting.
     """
 
-    # List of columns for sum and mean aggregations
-    sum_mean_cols = [
-            "interest_exp",
-            "principal_exp",
-            "property_tax_exp",
-            "insurance_exp",
-            "hoa_exp",
-            "maintenance_exp",
-            "pmi_exp",
-            "utility_exp",
-            "total_exp",
-            "rent_comparison_exp",
-            "extra_payment_exp"
-    ]
-
-    agg_dict = {col: ['sum', 'mean'] for col in sum_mean_cols}
-
-    agg_dict.update({
-        "loan_balance": "min", # min if the end of year for loan balance
-        "home_value": "max",
+    agg_dict = {
+        "interest_exp":     ["mean", "sum"],
+        "principal_exp":    "mean",
+        "property_tax_exp": ["mean", "sum"],
+        "insurance_exp":    "mean",
+        "hoa_exp":          "mean",
+        "maintenance_exp":  "mean",
+        "pmi_exp":          ["mean", "sum"],
+        "utility_exp":      "mean",
+        "total_exp":        "mean",
+        "rent_comparison_exp":  "mean",
+        "extra_payments_exp":   "mean",
+        "loan_balance":         "min", # min if the end of year for loan balance
+        "home_value":           "max",
         "rent_comparison_portfolio": "max",
-        "extra_payments_portfolio": "max"
-    })
+        "extra_payments_portfolio":  "max"
+    }
 
     year_df = sim_df.groupby("year").agg(agg_dict)
     year_df.columns = [f"{col}_{func}" for col, func in year_df.columns]
 
-    def rename_columns(df):
-        # remove sum from columns.
-        # Value is implied total for the year,
-        # mean value is implied for monthly.
-        # also remove min and max from loan balance and home value,
-        # its implied that these columns are values at the end of the year
-        new_columns = {}
-        for col in df.columns:
-            if col.endswith('_sum') or col.endswith('_max') or col.endswith('_min'):
-                new_columns[col] = col[:-4]
-            elif col.endswith('_mean'):
-                new_columns[col] = col[:-5] + '_mo'
-        df.rename(columns=new_columns, inplace=True)
-
-    rename_columns(year_df)
-
-    cumsum_cols = [
-        "rent_comparison_exp",
-        "interest_exp",
-        "principal_exp",
-    ]
-
-    for col in cumsum_cols:
-        year_df[f'cum_{col}'] = year_df[col].cumsum()
-
-
-    year_df["equity"] = year_df["home_value"] - year_df["loan_balance"]
+    year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_min"]
 
     # Adjusted Cost Basis TODO depreciation
     year_df["adj_cost_basis"] = inputs.home_price + inputs.rehab # - depreciation
 
     # Sale income is equity - the realtor fee
-    year_df["net_proceeds"] = year_df["home_value"] * (1 - inputs.realtor_rate)
+    year_df["net_proceeds"] = year_df["home_value_max"] * (1 - inputs.realtor_rate)
 
     # Total capital gains in dollars
     year_df["capital_gains"] = year_df["net_proceeds"] - year_df["adj_cost_basis"]
-
-    # TODO capital gains exclusion
-    year_df["capital_gains"] = year_df["sale_income"] + year_df["cum_principal_exp"] - inputs.home_price - inputs.down_payment
 
     return year_df
 
 
 def get_mortgage_metrics(yearly_df: pd.DataFrame):
     return {
-        "Total PMI Paid": yearly_df["pmi_exp"].sum(),
-        "Total Taxes Paid": yearly_df["property_tax_exp"].sum(),
-        "Total Interest Paid": yearly_df["interest_exp"].sum(),
+        "Total PMI Paid": yearly_df["pmi_exp_sum"].sum(),
+        "Total Taxes Paid": yearly_df["property_tax_exp_sum"].sum(),
+        "Total Interest Paid": yearly_df["interest_exp_sum"].sum(),
     }
 
 
 def get_all_simulation_data(inputs: Inputs, extra_payments: bool = False):
     monthly_df = get_monthly_sim_df(inputs, extra_payments)
     yearly_df = get_yearly_agg_df(inputs, monthly_df)
-
     mortgage_metrics = get_mortgage_metrics(yearly_df)
 
     results = {
@@ -352,50 +316,3 @@ def get_all_simulation_data(inputs: Inputs, extra_payments: bool = False):
     }
 
     return results
-
-
-def calculate():
-
-    results = get_all_simulation_data(include_metrics=True)
-    yearly_df = results["yearly_df"]
-
-    # Extra Payments stuff could be handled better...
-    
-    # Run another simulation with extra payments
-    extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
-
-    append_cols = ["net_worth_post_sale", "extra_payments_portfolio", "loan_balance", "extra_payment_exp"]
-    
-    merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
-
-    # add regular profit with extra payment portfolio from extra_payments_df which has been joined
-    merged_df["portfolio_nw"] = merged_df["net_worth_post_sale"] + merged_df["ep_extra_payments_portfolio"]
-
-    # get delta for both simluations against just regulat profit
-    merged_df["portfolio_nw_delta"] = merged_df["portfolio_nw"] - merged_df["net_worth_post_sale"]
-    merged_df["ep_nw_delta"] = merged_df["ep_net_worth_post_sale"] - merged_df["net_worth_post_sale"]
-
-    # remove any rows after the first row with a loan balance of 0
-    zero_index = merged_df[merged_df["ep_loan_balance"] == 0].index[0]
-
-    merged_df = merged_df.loc[:zero_index]
-
-    crossover = min_crossover(merged_df["ep_nw_delta"].values, merged_df["portfolio_nw_delta"].values)
-    df_len = len(merged_df)
-    total_extra_payments = merged_df["ep_extra_payment_exp"].sum()
-
-    extra_payments_metrics = {
-        "Reduced Payoff Time": f"{30 - df_len} Years",
-        "Total Extra Payment": total_extra_payments,
-        "Total Interest Savings": merged_df.loc[zero_index, "ep_nw_delta"]
-    }
-    
-    # Figures from extra_payments_df
-    cols = ["portfolio_nw_delta", "ep_nw_delta"]
-    names= ["Contribute to Stocks", "Pay Down Loan"]
-    title = "Added Net Worth From Extra Payments"
-              
-    if crossover == -1:
-        print("Over the long run, you would probably have more money if you had invested in the stock market.")
-    elif crossover >= 0:
-        print(f"Making these extra payments is a smart idea if plan on living in this house for at least {crossover} years.")
