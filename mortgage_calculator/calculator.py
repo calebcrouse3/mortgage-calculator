@@ -30,6 +30,17 @@ ALT_INVESTMENTS = {
 # I dont remember what I was going to do with this
 # paydown_with_profit = False
 
+# Methodology of extra payments
+# We compare the cumulative interest saved from extra payments versus the extra payments portfolio
+# In otherwords, whats the added net worth from making extra payments?
+# Added networth from extra payments is the interest saved - the extra payments.
+# Added networth from extra payments portfolio is the extra payments portfolio.
+
+# Methodology of rent versus own comparison.
+# What would be your total network worth if you rented instead of buying, assuming all else equal?
+# Networth from renting is the cash outlay plus the money saved from renting added to a portfolio - all rent expenses paid.
+# Networth from buying is adjusted sale income - all expenses paid.
+
 @dataclass
 class MortgageInputs:
     home_price: int = 300000
@@ -305,14 +316,42 @@ def get_mortgage_metrics(yearly_df: pd.DataFrame):
     }
 
 
-def get_all_simulation_data(inputs: Inputs, extra_payments: bool = False):
-    monthly_df = get_monthly_sim_df(inputs, extra_payments)
+def get_all_simulation_data(inputs: Inputs):
+    monthly_df = get_monthly_sim_df(inputs, extra_payments=True)
     yearly_df = get_yearly_agg_df(inputs, monthly_df)
     mortgage_metrics = get_mortgage_metrics(yearly_df)
-
+    
     results = {
         "yearly_df": yearly_df,
         "mortgage_metrics": mortgage_metrics,
     }
+    
+    if inputs.mo_extra_payment and inputs.num_extra_payments:
+        # Get data with extra payments
+        monthly_df_no_extra = get_monthly_sim_df(inputs, extra_payments=False)
+        yearly_df_no_extra = get_yearly_agg_df(inputs, monthly_df_no_extra)
+
+        # Compare standard vs extra payments
+        comparison_df = pd.merge(
+            yearly_df_no_extra["interest_exp_sum"],
+            yearly_df[["interest_exp_sum", "extra_payments_portfolio_max", "loan_balance_min"]]
+                .rename(columns={"interest_exp_sum": "interest_exp_sum_with_extra"}),
+            on="year",
+            how="inner"
+        )
+        
+        # Calculate interest saved from extra payments
+        comparison_df["interest_exp_cumulative"] = comparison_df["interest_exp_sum"].cumsum()
+        comparison_df["interest_exp_cumulative_with_extra"] = comparison_df["interest_exp_sum_with_extra"].cumsum()
+        comparison_df["interest_saved"] = comparison_df["interest_exp_cumulative"] - comparison_df["interest_exp_cumulative_with_extra"]
+        results["extra_payments_comparison"] = comparison_df[
+            [
+                "interest_exp_cumulative",
+                "interest_exp_cumulative_with_extra",
+                "interest_saved",
+                "extra_payments_portfolio_max",
+                "loan_balance_min"
+            ]
+        ]
 
     return results

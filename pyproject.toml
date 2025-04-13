@@ -10,6 +10,7 @@ python = "^3.12"
 numpy = "^1.26.3"
 numpy-financial = "^1.0.0"
 pandas = "^2.2.3"
+matplotlib = "^3.10.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.4"
