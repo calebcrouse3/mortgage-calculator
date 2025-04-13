@@ -264,15 +264,15 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
 
     # List of columns for sum and mean aggregations
     sum_mean_cols = [
-            "interest_exp", 
-            "principal_exp", 
-            "property_tax_exp", 
+            "interest_exp",
+            "principal_exp",
+            "property_tax_exp",
             "insurance_exp",
-            "hoa_exp", 
-            "maintenance_exp", 
-            "pmi_exp", 
+            "hoa_exp",
+            "maintenance_exp",
+            "pmi_exp",
             "utility_exp",
-            "total_exp", 
+            "total_exp",
             "rent_comparison_exp",
             "extra_payment_exp"
     ]
@@ -316,12 +316,18 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
 
 
     year_df["equity"] = year_df["home_value"] - year_df["loan_balance"]
-    year_df["sale_income"] = year_df["equity"] - (year_df["home_value"] * inputs.realtor_rate)
-    year_df["capital_gains"] = year_df["sale_income"] + year_df["cum_principal_exp"] - inputs.home_price - inputs.down_payment
 
-    year_df["net_worth_post_sale"] = year_df["cum_niaf"] + year_df["sale_income"] - inputs.rehab - inputs.closing_costs
-    year_df["renting_net_worth"] = year_df["rent_comparison_portfolio"] * (1 - inputs.capital_gains_tax_rate) - year_df["cum_rent_exp"]
-    year_df["extra_payments_portfolio"] = year_df["extra_payments_portfolio"] * (1 - inputs.capital_gains_tax_rate)
+    # Adjusted Cost Basis TODO depreciation
+    year_df["adj_cost_basis"] = inputs.home_price + inputs.rehab # - depreciation
+
+    # Sale income is equity - the realtor fee
+    year_df["net_proceeds"] = year_df["home_value"] * (1 - inputs.realtor_rate)
+
+    # Total capital gains in dollars
+    year_df["capital_gains"] = year_df["net_proceeds"] - year_df["adj_cost_basis"]
+
+    # TODO capital gains exclusion
+    year_df["capital_gains"] = year_df["sale_income"] + year_df["cum_principal_exp"] - inputs.home_price - inputs.down_payment
 
     return year_df
 
@@ -338,7 +344,7 @@ def get_all_simulation_data(inputs: Inputs, extra_payments: bool = False):
     monthly_df = get_monthly_sim_df(inputs, extra_payments)
     yearly_df = get_yearly_agg_df(inputs, monthly_df)
 
-    mortgage_metrics = get_mortgage_metrics(inputs, yearly_df)
+    mortgage_metrics = get_mortgage_metrics(yearly_df)
 
     results = {
         "yearly_df": yearly_df,
@@ -355,8 +361,11 @@ def calculate():
 
     # Extra Payments stuff could be handled better...
     
+    # Run another simulation with extra payments
     extra_payments_df = get_all_simulation_data(extra_payments=True)["yearly_df"]
+
     append_cols = ["net_worth_post_sale", "extra_payments_portfolio", "loan_balance", "extra_payment_exp"]
+    
     merged_df = merge_simulations(yearly_df, extra_payments_df, append_cols, "ep")
 
     # add regular profit with extra payment portfolio from extra_payments_df which has been joined
