@@ -195,17 +195,17 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
         ########################################################################
         
         # Sum of all the expenses for the month
-        total_exp = (
+        ownership_exp = (
             property_tax_exp +
             insurance_exp +
             hoa_exp +
             maintenance_exp +
             pmi_exp +
             utility_exp +
-            interest_exp +
-            principal_exp +
-            extra_payment_exp
+            interest_exp
         )
+        
+        total_exp = ownership_exp + principal_exp + extra_payment_exp
 
         # contribute to portfolio if you saved money from renting
         rent_comparison_portfolio += max(0, total_exp - rent_comparison_exp)
@@ -239,6 +239,7 @@ def get_monthly_sim_df(inputs: Inputs, extra_payments: bool = False):
             "pmi_exp": pmi_exp,
             "utility_exp": utility_exp,
             "total_exp": total_exp,
+            "ownership_exp": ownership_exp,
             # Balances and Values
             "loan_balance": loan_balance,
             "home_value": home_value,
@@ -282,9 +283,10 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
         "maintenance_exp":  "mean",
         "pmi_exp":          ["mean", "sum"],
         "utility_exp":      "mean",
-        "total_exp":        "mean",
-        "rent_comparison_exp":  "mean",
-        "extra_payments_exp":   "mean",
+        "total_exp":        ["mean", "sum"],
+        "ownership_exp":    "sum",
+        "rent_comparison_exp":  ["mean", "sum"],
+        "extra_payments_exp":   ["mean", "sum"],
         "loan_balance":         "min", # min if the end of year for loan balance
         "home_value":           "max",
         "rent_comparison_portfolio": "max",
@@ -294,17 +296,26 @@ def get_yearly_agg_df(inputs: Inputs, sim_df: pd.DataFrame):
     year_df = sim_df.groupby("year").agg(agg_dict)
     year_df.columns = [f"{col}_{func}" for col, func in year_df.columns]
 
+    # Calculate the "net worth" from owning
+    # TODO Mortgage interest deduction, Property tax deduction (up to SALT limits)
     year_df["equity"] = year_df["home_value_max"] - year_df["loan_balance_min"]
+    year_df["realtor_fee"] = year_df["home_value_max"] * inputs.realtor_rate
+    year_df["adjusted_cost_basis"] = inputs.home_price + inputs.rehab
+    year_df["total_gains"] = year_df["home_value_max"] - year_df["adjusted_cost_basis"]
+    year_df["capital_gains_tax"] = year_df["total_gains"] * inputs.capital_gains_tax_rate
+    year_df["ownership_exp_cumulative"] = year_df["ownership_exp_sum"].cumsum()
+    year_df["net_worth_from_owning"] = year_df["equity"] - year_df["realtor_fee"] - year_df["capital_gains_tax"] - year_df["ownership_exp_cumulative"]
 
-    # Adjusted Cost Basis TODO depreciation
-    year_df["adj_cost_basis"] = inputs.home_price + inputs.rehab # - depreciation
-
-    # Sale income is equity - the realtor fee
-    year_df["net_proceeds"] = year_df["home_value_max"] * (1 - inputs.realtor_rate)
-
-    # Total capital gains in dollars
-    year_df["capital_gains"] = year_df["net_proceeds"] - year_df["adj_cost_basis"]
-
+    # Calculate the "net worth" from renting
+    year_df["total_exp_cumulative"] = year_df["total_exp_sum"].cumsum()
+    year_df["rent_exp_cumulative"] = year_df["rent_comparison_exp_sum"].cumsum()
+    year_df["additional_investment"] = year_df["total_exp_cumulative"] - year_df["rent_exp_cumulative"]
+    year_df["rent_portfolio_cost_basis"] = year_df["rent_comparison_portfolio_max"] - inputs.cash_outlay - year_df["additional_investment"]
+    year_df["capital_gains_tax"] = (year_df["rent_comparison_portfolio_max"] - year_df["rent_portfolio_cost_basis"]) * inputs.capital_gains_tax_rate
+    year_df["net_worth_from_renting"] = year_df["rent_comparison_portfolio_max"] - year_df["capital_gains_tax"] - year_df["rent_exp_cumulative"]
+    
+    year_df["ownership_upside"] = year_df["net_worth_from_owning"] - year_df["net_worth_from_renting"]
+    
     return year_df
 
 
@@ -334,7 +345,7 @@ def get_all_simulation_data(inputs: Inputs):
         # Compare standard vs extra payments
         comparison_df = pd.merge(
             yearly_df_no_extra["interest_exp_sum"],
-            yearly_df[["interest_exp_sum", "extra_payments_portfolio_max", "loan_balance_min"]]
+            yearly_df[["interest_exp_sum", "extra_payments_portfolio_max", "loan_balance_min", "extra_payments_exp_sum"]]
                 .rename(columns={"interest_exp_sum": "interest_exp_sum_with_extra"}),
             on="year",
             how="inner"
@@ -344,12 +355,18 @@ def get_all_simulation_data(inputs: Inputs):
         comparison_df["interest_exp_cumulative"] = comparison_df["interest_exp_sum"].cumsum()
         comparison_df["interest_exp_cumulative_with_extra"] = comparison_df["interest_exp_sum_with_extra"].cumsum()
         comparison_df["interest_saved"] = comparison_df["interest_exp_cumulative"] - comparison_df["interest_exp_cumulative_with_extra"]
+
+        # Caculate total return on investment from portfolio
+        comparison_df["extra_payments_exp_cumulative"] = comparison_df["extra_payments_exp_sum"].cumsum()
+        comparison_df["extra_payments_portfolio_gains"] = comparison_df["extra_payments_portfolio_max"] - comparison_df["extra_payments_exp_cumulative"]
+
         results["extra_payments_comparison"] = comparison_df[
             [
                 "interest_exp_cumulative",
                 "interest_exp_cumulative_with_extra",
                 "interest_saved",
                 "extra_payments_portfolio_max",
+                "extra_payments_portfolio_gains",
                 "loan_balance_min"
             ]
         ]
